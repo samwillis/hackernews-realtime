@@ -24,7 +24,10 @@ flowchart LR
 
 One shared ingester mirrors a bounded set of stories and feed positions into
 Postgres. The browser subscribes to live SQL results through Neon Realtime.
-The Next.js server supplies initial rows and short-lived sealed queries.
+The Next.js server supplies initial rows and short-lived sealed queries. Feed
+results carry source ranks and are explicitly sorted before display. A prepared
+standby ingester takes over at session boundaries; the plan targets handoffs
+within five seconds and verifies that target on staging.
 
 Initial scope: the top and new feeds, 30 stories per page, with live scores,
 comment counts, and ranking changes. Preserve HN's orange header, typography,
@@ -53,6 +56,11 @@ secret stay on the server; only the Realtime WebSocket URL is public.
 
 [docs/neon-staging.md](docs/neon-staging.md) records the staging setup requirements.
 Exact install and run commands will be added once the app is scaffolded.
+
+[docs/prerelease-build.md](docs/prerelease-build.md) defines the clean-checkout
+package bootstrap and prebuilt Vercel deployment. SDK tarballs are generated
+from pinned source before dependency installation. UI work starts alongside
+the staging lifecycle checks using a development-only story fixture.
 
 ## References
 

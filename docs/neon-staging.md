@@ -41,7 +41,11 @@ packages, while the local examples reference `0.0.1`; verify package contents
 instead of treating either version number as proof of a usable release.
 
 Keep generated tarballs in `.sdk/`, which is gitignored. Scripts should accept
-`NEON_PKGS_DIR` and document how another developer can reproduce the packages.
+`NEON_PKGS_DIR` as a verified local override. The default bootstrap fetches
+pinned commits and generates packages before installing app dependencies;
+follow [prerelease build and deployment](prerelease-build.md). Verify that a
+fresh checkout produces identical package integrity values and a working
+prebuilt Vercel artifact, without relying on a developer's local checkout.
 
 The guide also describes a fallback using `neon api` to call the Realtime
 management routes when the installed CLI lacks first-class support. Recheck the
