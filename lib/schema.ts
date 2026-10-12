@@ -5,7 +5,17 @@ import {
   boolean,
   primaryKey,
   index,
+  bigint,
 } from "drizzle-orm/pg-core";
+export const events = pgTable("hn_events", {
+  id: bigint("id", { mode: "number" }).primaryKey(),
+  itemId: integer("item_id").notNull(),
+  storyId: integer("story_id").notNull(),
+  kind: text("kind").notNull(),
+  label: text("label").notNull(),
+  details: text("details").notNull(),
+  occurredAt: bigint("occurred_at", { mode: "number" }).notNull(),
+});
 export const items = pgTable("hn_items", {
   id: integer("id").primaryKey(),
   type: text("type").notNull(),

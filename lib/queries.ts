@@ -3,7 +3,7 @@ import { and, asc, eq, sql } from "drizzle-orm";
 import { createRealtime } from "@neon/realtime/server";
 import { drizzleAdapter } from "@neon/realtime-drizzle";
 import { database } from "./db";
-import { entries, items, comments } from "./schema";
+import { entries, items, comments, events } from "./schema";
 import { THREAD_LIMIT } from "./comments";
 import { PAGE_SIZE, type Feed } from "./types";
 export function feedQuery(feed: Feed, page: number) {
@@ -94,3 +94,21 @@ export function sealComments(id: number) {
 }
 export type SealedStory = Awaited<ReturnType<typeof sealStory>>;
 export type SealedComments = Awaited<ReturnType<typeof sealComments>>;
+export function eventQuery() {
+  return database()
+    .select({
+      event_id: sql<number>`${events.id}`.as("event_id"),
+      item_id: events.itemId,
+      story_id: events.storyId,
+      kind: events.kind,
+      label: events.label,
+      details: events.details,
+      occurred_at: events.occurredAt,
+    })
+    .from(events)
+    .orderBy(asc(events.id));
+}
+export function sealEvents() {
+  return realtime().seal({ query: eventQuery() });
+}
+export type SealedEvents = Awaited<ReturnType<typeof sealEvents>>;

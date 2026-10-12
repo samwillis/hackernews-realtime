@@ -48,32 +48,6 @@ export function Header({
     </header>
   );
 }
-export function Footer() {
-  return (
-    <footer>
-      <div className="footer-links">
-        <a href={`${HN}/newsguidelines.html`}>Guidelines</a> |{" "}
-        <a href={`${HN}/newsfaq.html`}>FAQ</a> |{" "}
-        <a href={`${HN}/lists`}>Lists</a> |{" "}
-        <a href="https://github.com/HackerNews/API">API</a> |{" "}
-        <a href={`${HN}/security.html`}>Security</a> |{" "}
-        <a href="https://www.ycombinator.com/legal/">Legal</a> |{" "}
-        <a href="https://www.ycombinator.com/apply/">Apply to YC</a> |{" "}
-        <a href="mailto:hn@ycombinator.com">Contact</a>
-      </div>
-      <form action="https://hn.algolia.com/" method="get">
-        <label>
-          Search: <input name="q" aria-label="Search Hacker News" />
-        </label>
-      </form>
-      <p className="attribution">
-        Hacker News, live with{" "}
-        <a href="https://neon.com/docs/realtime">Neon Realtime</a>. Replies and
-        submissions happen on <a href={HN}>Hacker News</a>.
-      </p>
-    </footer>
-  );
-}
 export function useLiveControls(
   initialNow: number,
   connection: string,

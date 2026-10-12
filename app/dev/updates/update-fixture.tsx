@@ -1,9 +1,10 @@
 "use client";
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { News } from "../../news-client";
 import { Discussion } from "../../item/comments-client";
 import type { Story } from "@/lib/types";
 import type { Comment } from "@/lib/comments";
+import type { HnEvent } from "@/lib/events";
 const initialComments: Comment[] = [
   {
     story_id: 1000,
@@ -55,6 +56,83 @@ export function UpdateFixture({
   const [view, setView] = useState("stories");
   const [stories, setStories] = useState(initialStories);
   const [comments, setComments] = useState(initialComments);
+  const [events, setEvents] = useState<HnEvent[]>(() => [
+    ...initialStories.map((story, index) => ({
+      event_id: index + 1,
+      item_id: story.item_id,
+      story_id: story.item_id,
+      kind: "story-updated",
+      label: story.title,
+      details: '{"score":{"from":"1","to":"2"}}',
+      occurred_at: initialNow - 60000 + index * 1500,
+    })),
+    {
+      event_id: 100,
+      item_id: 99999,
+      story_id: 99999,
+      kind: "new-left",
+      label: "An item on another page",
+      details: '{"rank":150}',
+      occurred_at: initialNow - 8000,
+    },
+    {
+      event_id: 101,
+      item_id: 501,
+      story_id: 1000,
+      kind: "comment-updated",
+      label: "Comment by alice",
+      details: '{"text":{"from":"old","to":"new"}}',
+      occurred_at: initialNow - 5000,
+    },
+  ]);
+  const sequence = useRef(1000);
+  const previous = useRef<{ stories: Story[]; comments: Comment[] }>({
+    stories,
+    comments,
+  });
+  useEffect(() => {
+    const added: HnEvent[] = [];
+    for (const type of ["stories", "comments"] as const) {
+      const old = new Map(
+        previous.current[type].map((row) => [row.item_id, row]),
+      );
+      const current = type === "stories" ? stories : comments;
+      for (const row of current) {
+        const prior = old.get(row.item_id);
+        const delta: Record<string, unknown> = {};
+        if (prior)
+          for (const field of Object.keys(row)) {
+            const before = (prior as unknown as Record<string, unknown>)[field];
+            const after = (row as unknown as Record<string, unknown>)[field];
+            if (field !== "committed_at" && before !== after)
+              delta[field] = { from: before, to: after };
+          }
+        if (!prior || Object.keys(delta).length)
+          added.push({
+            event_id: sequence.current++,
+            item_id: row.item_id,
+            story_id: "story_id" in row ? row.story_id : row.item_id,
+            kind: `${type === "stories" ? "story" : "comment"}-${prior ? "updated" : "added"}`,
+            label: "title" in row ? row.title : `Comment by ${row.author}`,
+            details: JSON.stringify(delta),
+            occurred_at: Date.now(),
+          });
+        old.delete(row.item_id);
+      }
+      for (const row of old.values())
+        added.push({
+          event_id: sequence.current++,
+          item_id: row.item_id,
+          story_id: "story_id" in row ? row.story_id : row.item_id,
+          kind: `${type === "stories" ? "story" : "comment"}-removed`,
+          label: "title" in row ? row.title : `Comment by ${row.author}`,
+          details: "{}",
+          occurred_at: Date.now(),
+        });
+    }
+    previous.current = { stories, comments };
+    if (added.length) setEvents((rows) => [...rows, ...added]);
+  }, [stories, comments]);
   return (
     <>
       <div
@@ -176,12 +254,56 @@ export function UpdateFixture({
           Edit comment
         </button>
         <button
+          onClick={() =>
+            setComments((rows) =>
+              rows.map((row) =>
+                row.item_id === 502
+                  ? {
+                      ...row,
+                      text: `${row.text}<p>Edited reply.</p>`,
+                      committed_at: new Date().toISOString(),
+                    }
+                  : row,
+              ),
+            )
+          }
+        >
+          Edit reply
+        </button>
+        <button
           onClick={() => {
             setStories(initialStories);
             setComments(initialComments);
           }}
         >
           Reset fixture
+        </button>
+        <button
+          onClick={() =>
+            setEvents((rows) => [
+              ...rows,
+              {
+                event_id: sequence.current++,
+                item_id: 99999,
+                story_id: 99999,
+                kind: "comment-removed",
+                label: "Offscreen comment",
+                details: "{}",
+                occurred_at: Date.now(),
+              },
+            ])
+          }
+        >
+          Offscreen event
+        </button>
+        <button
+          onClick={() =>
+            view === "stories"
+              ? setStories((rows) => rows.slice(1))
+              : setComments((rows) => rows.filter((row) => row.item_id !== 503))
+          }
+        >
+          Remove row
         </button>
       </div>
       {view === "stories" ? (
@@ -193,6 +315,7 @@ export function UpdateFixture({
           rows={stories}
           initialNow={initialNow}
           connection="fixture"
+          fixtureEvents={events}
         />
       ) : (
         <Discussion
@@ -203,6 +326,7 @@ export function UpdateFixture({
           queries={null}
           initialNow={initialNow}
           connection="fixture"
+          fixtureEvents={events}
         />
       )}
     </>

@@ -43,7 +43,15 @@ test(
         reconciledAt: Date.now(),
       };
       assert.equal(await publish(pool, winner, winnerToken, snapshot), 6);
+      assert.equal(
+        (await pool.query("SELECT count(*) FROM hn_events")).rows[0].count,
+        "6",
+      );
       assert.equal(await publish(pool, winner, winnerToken, snapshot), 0);
+      assert.equal(
+        (await pool.query("SELECT count(*) FROM hn_events")).rows[0].count,
+        "6",
+      );
       await assert.rejects(
         publish(pool, loser, winnerToken, snapshot),
         LostLease,
@@ -123,6 +131,9 @@ test(
         ...thread,
         rows: [{ ...thread.rows[0], parentId: 99 }],
       };
+      const eventsBeforeRollback = (
+        await pool.query("SELECT count(*) FROM hn_events")
+      ).rows[0].count;
       await assert.rejects(
         publish(pool, winner, winnerToken, {
           ...snapshot,
@@ -130,6 +141,10 @@ test(
           threads: [invalid],
         }),
         /Invalid thread snapshot/,
+      );
+      assert.equal(
+        (await pool.query("SELECT count(*) FROM hn_events")).rows[0].count,
+        eventsBeforeRollback,
       );
       assert.deepEqual(
         (
@@ -211,6 +226,84 @@ test(
         LostLease,
       );
       await publish(pool, winner, replacement.fencing, snapshot);
+    } finally {
+      await pool.end();
+      await admin.query(`DROP SCHEMA ${schema} CASCADE`);
+      await admin.end();
+    }
+  },
+);
+
+test(
+  "event journal covers all mirrored fields, movement, removals and retention",
+  { skip: !process.env.RUN_DB_TESTS },
+  async () => {
+    const schema = `hn_events_test_${Date.now()}`;
+    const admin = new Pool({
+      connectionString: process.env.DATABASE_URL_UNPOOLED,
+    });
+    await admin.query(`CREATE SCHEMA ${schema}`);
+    const pool = new Pool({
+      connectionString: process.env.DATABASE_URL_UNPOOLED,
+      options: `-c search_path=${schema}`,
+      max: 1,
+    });
+    try {
+      await migrate(pool);
+      await pool.query(
+        "INSERT INTO hn_items(id,type,title,created,committed_at) VALUES(99,'story','Off-page story',0,'initial')",
+      );
+      await pool.query(
+        "INSERT INTO hn_feed_entries(feed,item_id,rank) VALUES('top',99,75)",
+      );
+      await pool.query(
+        "UPDATE hn_items SET score=5,comments=2,title='Edited title',dead=true WHERE id=99",
+      );
+      const update = (
+        await pool.query("SELECT * FROM hn_events WHERE kind='story-updated'")
+      ).rows[0];
+      assert.equal(update.item_id, 99);
+      assert.deepEqual(Object.keys(JSON.parse(update.details)).sort(), [
+        "comments",
+        "dead",
+        "score",
+        "title",
+      ]);
+      await pool.query(
+        "UPDATE hn_items SET committed_at='no domain change' WHERE id=99",
+      );
+      assert.equal(
+        (await pool.query("SELECT count(*) FROM hn_events")).rows[0].count,
+        "3",
+      );
+      await pool.query("UPDATE hn_feed_entries SET rank=1 WHERE item_id=99");
+      await pool.query("DELETE FROM hn_feed_entries WHERE item_id=99");
+      await pool.query(
+        "INSERT INTO hn_comments(story_id,item_id,parent_id,path,depth,created,text,deleted,dead,committed_at) VALUES(99,100,99,'000001',0,0,'hello',false,false,'initial')",
+      );
+      await pool.query(
+        "UPDATE hn_comments SET text='edited',path='000002',deleted=true WHERE item_id=100",
+      );
+      await pool.query("DELETE FROM hn_comments WHERE item_id=100");
+      const kinds = (
+        await pool.query("SELECT kind FROM hn_events ORDER BY id")
+      ).rows.map((row) => row.kind);
+      assert.deepEqual(kinds, [
+        "story-added",
+        "top-entered",
+        "story-updated",
+        "top-moved",
+        "top-left",
+        "comment-added",
+        "comment-updated",
+        "comment-removed",
+      ]);
+      await pool.query("UPDATE hn_events SET occurred_at=0 WHERE id=1");
+      await pool.query("UPDATE hn_items SET score=score WHERE id=99");
+      assert.equal(
+        (await pool.query("SELECT count(*) FROM hn_events")).rows[0].count,
+        "7",
+      );
     } finally {
       await pool.end();
       await admin.query(`DROP SCHEMA ${schema} CASCADE`);

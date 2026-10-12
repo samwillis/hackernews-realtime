@@ -1,12 +1,18 @@
 "use client";
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
+import { markTransitionVisible, rectVisible } from "./timeline-visibility";
 import {
   rowChanges,
   HIGHLIGHT_MS,
   type IdentifiedRow,
   type RowChange,
 } from "@/lib/changes";
-type Position = { top: number; height: number; padding: string };
+type Position = {
+  top: number;
+  height: number;
+  padding: string;
+  visible: boolean;
+};
 export function useLiveList<T extends IdentifiedRow>(
   initialRows: readonly T[],
   incoming: readonly T[],
@@ -63,9 +69,21 @@ export function useLiveList<T extends IdentifiedRow>(
           top: rect.top + window.scrollY,
           height: rect.height,
           padding: getComputedStyle(node).paddingBottom,
+          visible: rectVisible(rect),
         });
       }
     cancelLayout();
+    const nextIndex = new Map(rows.map((row, index) => [row.item_id, index]));
+    markTransitionVisible(
+      prior.current
+        .filter((row, index) => {
+          return (
+            nextIndex.get(row.item_id) !== index &&
+            before.get(row.item_id)?.visible
+          );
+        })
+        .map((row) => row.item_id),
+    );
     const now = Date.now();
     const updated = animate
       ? rowChanges(prior.current, rows, fields, changes.current, now)
@@ -135,6 +153,31 @@ export function useLiveList<T extends IdentifiedRow>(
   useLayoutEffect(() => {
     const update = pending.current;
     pending.current = null;
+    if (update) {
+      const crossing: number[] = [];
+      for (const [id, node] of nodes.current) {
+        const full = node.getBoundingClientRect();
+        const old = update.before.get(id);
+        if (
+          update.entering.has(id) ||
+          (old &&
+            (Math.abs(old.top - window.scrollY - full.top) > 0.5 ||
+              Math.abs(old.height - full.height) > 0.5))
+        ) {
+          const top = Math.min(
+            full.top,
+            old ? old.top - window.scrollY : full.top,
+          );
+          const bottom = Math.max(
+            full.bottom,
+            old ? old.top - window.scrollY + old.height : full.bottom,
+          );
+          if (rectVisible({ top, bottom, left: full.left, right: full.right }))
+            crossing.push(id);
+        }
+      }
+      markTransitionVisible(crossing);
+    }
     if (
       !update?.animate ||
       window.matchMedia("(prefers-reduced-motion: reduce)").matches

@@ -4,16 +4,20 @@ import Link from "next/link";
 import { useLiveQuery } from "@neon/realtime-react";
 import type { SealedFeed } from "@/lib/queries";
 import { sortStories, type Feed, type Story } from "@/lib/types";
-import { Footer, Header, LiveProvider, useLiveControls } from "./live-ui";
+import { Header, LiveProvider, useLiveControls } from "./live-ui";
 import { StoryRow } from "./story-row";
 import { useLiveList } from "./use-live-list";
+import { EventTimeline } from "./event-timeline";
+import type { HnEvent } from "@/lib/events";
 const fields = ["score", "comments", "title"] as const;
+const emptyEvents: HnEvent[] = [];
 type Props = {
   feed: Feed;
   page: number;
   initialRows: Story[];
   query: SealedFeed | null;
   initialNow: number;
+  fixtureEvents?: readonly HnEvent[];
 };
 export function NewsClient(props: Props) {
   if (!props.query)
@@ -54,6 +58,7 @@ export function News({
   connection,
   error,
   initialNow,
+  fixtureEvents,
 }: Props & { rows: readonly Story[]; connection: string; error?: string }) {
   const controls = useLiveControls(initialNow, connection);
   const list = useLiveList(
@@ -101,7 +106,12 @@ export function News({
           More
         </Link>
       )}
-      <Footer />
+      <EventTimeline
+        paused={controls.paused}
+        fixtureEvents={
+          connection === "fixture" ? (fixtureEvents ?? emptyEvents) : undefined
+        }
+      />
     </main>
   );
 }

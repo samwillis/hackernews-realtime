@@ -6,9 +6,6 @@ export default function Page() {
   if (process.env.HN_FIXTURE !== "1" || process.env.NODE_ENV === "production")
     notFound();
   return (
-    <UpdateFixture
-      initialStories={fixture("top", 1).slice(0, 4)}
-      initialNow={Date.now()}
-    />
+    <UpdateFixture initialStories={fixture("top", 1)} initialNow={Date.now()} />
   );
 }

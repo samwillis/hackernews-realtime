@@ -7,7 +7,9 @@ resume applies the latest ordered snapshot. Story comment links open live nested
 threads in the demo. Replies, submissions, voting and profiles link to the real
 Hacker News site. The orange header contains a square RT mark, top/new/submit
 navigation and right-aligned live controls. Changed scores and counts pulse
-individually; inserted rows expand and reordered rows animate.
+individually; inserted rows expand and reordered rows animate. A fixed bottom
+timeline shows all mirrored events from the last two minutes, including changes
+to stories and comments outside the current view.
 
 Demo: [hackernews-realtime.vercel.app](https://hackernews-realtime.vercel.app/).
 The demo uses Neon staging; [validation](docs/validation.md) records the current
@@ -100,6 +102,29 @@ renewal. A fourth discussion shows cached data with an HN-updates-busy indicator
 and retries automatically. Large discussions link to the full original thread.
 Prefetching a story link does not register a watch. These limits are explicit in
 `lib/comments.ts`; raise them only with ingestion/load measurements.
+
+## Event timeline
+
+The footer is a two-minute timeline: new events appear at the right and drift
+left. Orange marks relate to items inside the unobscured viewport; grey marks
+relate to items elsewhere. Scrolling and collapsing replies update these colours.
+The before/after viewport union stays orange during the 320ms row transition,
+including arrivals, removals and rows that cross the screen while reordering.
+
+Hover, focus or tap a marker to inspect it. Events in the same second share a
+counted marker; its scrollable details include every event, with no type filter
+or burst cap. Inspection holds the timeline steady; Escape, the close button or
+an outside tap dismisses the details. Header pause freezes both the page and the
+timeline. Reduced motion advances the timeline in one-second steps.
+
+Postgres triggers journal story, feed and comment writes inside the same fenced
+transaction. A separate sealed Realtime query streams all journal rows, independent
+of the current feed, page or discussion. Unchanged fields and timestamp-only
+writes emit no event. The journal retains 15 minutes and is pruned during ingestion;
+the UI displays the most recent two minutes. “All events” means all changes mirrored
+by this demo's bounded feeds and watched discussions. Comment body details are
+short text excerpts. Apply migration 0003 with `npm run db:setup`; the existing
+native ingester picks it up without redeployment.
 
 ## Checks
 

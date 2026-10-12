@@ -6,17 +6,21 @@ import { sortStories, type Story } from "@/lib/types";
 import { sortComments, THREAD_LIMIT, type Comment } from "@/lib/comments";
 import { commentContent } from "@/lib/comment-content";
 import { age, HN, itemLink, userLink } from "@/lib/links";
-import { Footer, Header, LiveProvider, useLiveControls } from "../live-ui";
+import { Header, LiveProvider, useLiveControls } from "../live-ui";
 import { StoryRow } from "../story-row";
 import { useLiveList } from "../use-live-list";
+import { EventTimeline } from "../event-timeline";
+import type { HnEvent } from "@/lib/events";
 const storyFields = ["score", "comments", "title", "body"] as const;
 const commentFields = ["text", "deleted", "dead"] as const;
 type Queries = { story: SealedStory; comments: SealedComments };
+const emptyEvents: HnEvent[] = [];
 type Props = {
   initialStories: Story[];
   initialComments: Comment[];
   queries: Queries | null;
   initialNow: number;
+  fixtureEvents?: readonly HnEvent[];
 };
 export function CommentsClient(props: Props) {
   if (!props.queries)
@@ -81,6 +85,7 @@ export function Discussion({
   connection,
   error,
   initialNow,
+  fixtureEvents,
 }: Props & {
   stories: readonly Story[];
   comments: readonly Comment[];
@@ -138,6 +143,7 @@ export function Discussion({
       <Header controls={controls} connection={connection} error={error} />
       <article
         className="thread-story"
+        data-item-id={story.item_id}
         ref={(node) => liveStory.register(story.item_id, node)}
       >
         <StoryRow
@@ -251,7 +257,12 @@ export function Discussion({
           <a href={itemLink(id)}>Read the full discussion on Hacker News</a>.
         </p>
       )}
-      <Footer />
+      <EventTimeline
+        paused={controls.paused}
+        fixtureEvents={
+          connection === "fixture" ? (fixtureEvents ?? emptyEvents) : undefined
+        }
+      />
     </main>
   );
 }

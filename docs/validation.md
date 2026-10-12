@@ -87,6 +87,45 @@ functional coverage; broader discussion-load measurement remains outstanding.
 The earlier launch checks below continue to apply, including deployed reduced
 motion and injected failures.
 
+## Event timeline
+
+The fixed event footer replaces the old HN links/search footer on feeds and
+story discussions. The update is deployed as
+`hackernews-realtime-7lhlt98e3-samwillis-projects.vercel.app` with the stable alias
+above. [Timeline screenshot](timeline.png) shows event details and both colours.
+
+- TypeScript, 13 unit checks and two isolated staging database tests passed.
+  Journal coverage includes every changed field, no-op suppression, feed moves
+  and exits, comment insert/edit/remove, transaction rollback and retention.
+  A 1,500-event unit burst retained every event across different types and IDs.
+- Migration 0003 was applied on the dedicated staging branch. Row triggers record
+  domain events in the same fenced transaction; the unchanged native ingester
+  produces them automatically. A separate sealed Realtime query receives events
+  independently of the current page and thread. There is no event-type filter
+  or result-count cap; ingestion prunes journal records older than 15 minutes.
+- Deterministic browser checks showed all 30 events orange while rows crossed
+  the viewport during a reversal, then 15 orange after the 320ms animation
+  settled. Scrolling changed the orange/grey distribution while the footer
+  stayed at the same screen position. An exiting comment retained orange during
+  its grace period. Collapsing a parent made its edited reply's event grey.
+- Pause kept timeline counts and every marker position unchanged while an
+  offscreen event arrived. Resume included it. Click/focus opened complete burst
+  details and Escape closed them. Inspection holds the timeline steady; an
+  outside tap and close button also dismiss the panel.
+- Production received score/count/rank events for stories outside the current
+  page, plus watched-discussion events. A live discussion rendered 195 comments
+  with both source and Realtime healthy. The mobile page was checked at 390×844:
+  document/footer widths were 390px and the detail panel stayed within the
+  viewport (12px–378px). The normal desktop viewport was restored afterwards.
+- The pinned Vercel production build passed. All 26 public assets passed a scan
+  against the actual database credentials and sealing secret before upload.
+
+“All events” covers changes mirrored by the demo's first 150 top/new stories and
+bounded watched discussions. The timeline displays the most recent two minutes;
+events in the same second share a counted marker whose details list every event.
+Text/body details use short, plain-text excerpts. Broader launch checks below,
+including deployed reduced motion, are still open.
+
 ## Ingestion evidence
 
 The deployed configuration uses 120,000ms active tenure, 90,000ms standby
