@@ -18,6 +18,7 @@ export const items = pgTable("hn_items", {
   deleted: boolean("deleted").notNull(),
   dead: boolean("dead").notNull(),
   committedAt: text("committed_at").notNull(),
+  body: text("body"),
 });
 export const entries = pgTable(
   "hn_feed_entries",
@@ -32,4 +33,21 @@ export const entries = pgTable(
     primaryKey({ columns: [t.feed, t.itemId] }),
     index("hn_feed_rank").on(t.feed, t.rank, t.itemId),
   ],
+);
+export const comments = pgTable(
+  "hn_comments",
+  {
+    storyId: integer("story_id").notNull(),
+    itemId: integer("item_id").notNull(),
+    parentId: integer("parent_id").notNull(),
+    path: text("path").notNull(),
+    depth: integer("depth").notNull(),
+    author: text("author"),
+    created: integer("created").notNull(),
+    text: text("text").notNull(),
+    deleted: boolean("deleted").notNull(),
+    dead: boolean("dead").notNull(),
+    committedAt: text("committed_at").notNull(),
+  },
+  (t) => [primaryKey({ columns: [t.storyId, t.itemId] })],
 );

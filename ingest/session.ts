@@ -4,6 +4,7 @@ import type { Pool } from "pg";
 import { HnSource } from "./source";
 import { Leases, LostLease } from "./lease";
 import { publish } from "./store";
+import { WATCH_LIMIT, WATCH_SECONDS } from "../lib/comments";
 export interface SessionOptions {
   budgetMs?: number;
   tenureMs?: number;
@@ -43,6 +44,8 @@ export async function runSession(pool: Pool, options: SessionOptions = {}) {
   let publishedRevision = -1;
   let renewing: Promise<void> | undefined;
   let reconciliation: Promise<void> | undefined;
+  let watchRefresh: Promise<void> | undefined;
+  let watchesCheckedAt = 0;
   let standbyMarkedReady = false;
   let waitingForHandoff = false;
   const event = async (kind: string, details: Record<string, unknown> = {}) => {
@@ -73,10 +76,10 @@ export async function runSession(pool: Pool, options: SessionOptions = {}) {
   };
   const renew = async () => {
     try {
-      let valid = await leases.renew(role, fencing, source.ready);
+      let valid = await leases.renew(role, fencing, source.prepared);
       // Transfer can occur between the standby poll and its renewal.
       if (!valid && role === "standby" && (await promote()))
-        valid = await leases.renew("active", fencing, source.ready);
+        valid = await leases.renew("active", fencing, source.prepared);
       if (!valid) {
         stopped = true;
         controller.abort(new LostLease());
@@ -99,6 +102,23 @@ export async function runSession(pool: Pool, options: SessionOptions = {}) {
             fencing,
           ],
         );
+        for (const thread of source.threads.values())
+          await pool.query(
+            `UPDATE hn_threads SET state=$2,checked_at=CASE WHEN $2='healthy' THEN clock_timestamp() ELSE checked_at END
+          WHERE story_id=$1 AND EXISTS(SELECT 1 FROM ingest_leases WHERE id=1 AND active_owner=$3 AND fencing=$4 AND active_until>clock_timestamp())`,
+            [
+              thread.id,
+              source.connected && thread.ready
+                ? "healthy"
+                : !source.connected
+                  ? "reconnecting"
+                  : thread.failed
+                    ? "degraded"
+                    : "starting",
+              owner,
+              fencing,
+            ],
+          );
       }
     } catch {
       stopped = true;
@@ -121,11 +141,29 @@ export async function runSession(pool: Pool, options: SessionOptions = {}) {
   };
   process.once("SIGINT", shutdown);
   process.once("SIGTERM", shutdown);
+  const refreshWatches = async () => {
+    const { rows } = await pool.query(
+      "SELECT story_id FROM hn_threads WHERE requested_at>clock_timestamp()-$1::integer*interval '1 second' ORDER BY story_id LIMIT $2",
+      [WATCH_SECONDS, WATCH_LIMIT],
+    );
+    source.watchThreads(rows.map((row) => row.story_id));
+  };
   try {
     await event("started", { role, budgetMs, tenureMs, overlapMs });
     await source.reconcile();
+    await refreshWatches();
     await renew();
     while (!stopped && !signal.aborted && Date.now() < deadline - 5000) {
+      if (Date.now() - watchesCheckedAt >= 5000 && !watchRefresh) {
+        watchesCheckedAt = Date.now();
+        watchRefresh = refreshWatches()
+          .catch(async () => {
+            await event("thread_watch_failed");
+          })
+          .finally(() => {
+            watchRefresh = undefined;
+          });
+      }
       if (source.needsReconcile && !reconciliation) {
         reconciliation = source
           .reconcile()
@@ -138,7 +176,8 @@ export async function runSession(pool: Pool, options: SessionOptions = {}) {
           });
       }
       if (role === "standby") {
-        if (source.ready) {
+        if (!source.prepared) standbyMarkedReady = false;
+        if (source.prepared) {
           if (!standbyMarkedReady) {
             await leases.renew("standby", fencing, true);
             standbyMarkedReady = true;
@@ -182,6 +221,7 @@ export async function runSession(pool: Pool, options: SessionOptions = {}) {
     await source.close();
     await reconciliation?.catch(() => {});
     await renewing?.catch(() => {});
+    await watchRefresh?.catch(() => {});
     await leases.release();
     await pool.query(
       `UPDATE ingest_status SET state='degraded', failure_at=clock_timestamp(), failure='Session ended without handoff'

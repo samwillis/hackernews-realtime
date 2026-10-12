@@ -7,6 +7,7 @@ import {
   type Database,
 } from "@firebase/database";
 import { FEED_SIZE, type Feed } from "../lib/types";
+import { HnThread, type ThreadSnapshot } from "./threads";
 export interface HnItem {
   id: number;
   type?: string;
@@ -18,6 +19,9 @@ export interface HnItem {
   descendants?: number;
   dead?: boolean;
   deleted?: boolean;
+  kids?: number[];
+  parent?: number;
+  text?: string;
 }
 export interface SourceSnapshot {
   feeds: Record<Feed, number[]>;
@@ -27,6 +31,7 @@ export interface SourceSnapshot {
   reconciledAt: number;
   itemReceipts?: Map<number, number>;
   feedReceipts?: Record<Feed, number>;
+  threads?: ThreadSnapshot[];
 }
 const API = "https://hacker-news.firebaseio.com/v0";
 export async function readHn<T>(
@@ -73,6 +78,8 @@ export class HnSource {
   private reconciliation?: Promise<void>;
   private itemVersions = new Map<number, number>();
   private feedVersions: Record<Feed, number> = { top: 0, new: 0 };
+  readonly threads = new Map<number, HnThread>();
+  private closingThreads: Promise<void>[] = [];
   connected = false;
   failed = false;
   snapshot: SourceSnapshot = {
@@ -106,6 +113,7 @@ export class HnSource {
           if (this.connected && !wasConnected) {
             this.reconnectEpoch++;
             this.failed = false;
+            this.threads.forEach((thread) => thread.invalidate());
           }
         },
         fail,
@@ -184,6 +192,31 @@ export class HnSource {
       Date.now() - this.snapshot.reconciledAt >= 60000
     );
   }
+  get prepared() {
+    return (
+      this.ready && [...this.threads.values()].every((thread) => thread.ready)
+    );
+  }
+  watchThreads(ids: number[]) {
+    if (this.closed) return;
+    const wanted = new Set(ids);
+    for (const [id, thread] of this.threads)
+      if (!wanted.has(id)) {
+        this.closingThreads.push(thread.close());
+        this.threads.delete(id);
+      }
+    for (const id of wanted)
+      if (!this.threads.has(id))
+        this.threads.set(
+          id,
+          new HnThread(this.db, id, this.signal, () => this.markChanged()),
+        );
+    for (const thread of this.threads.values())
+      if (thread.needsReconcile)
+        void thread.reconcile().catch(() => {
+          thread.failed = true;
+        });
+  }
   async reconcile() {
     if (this.reconciliation) return this.reconciliation;
     this.reconciliation = this.refresh().finally(() => {
@@ -244,6 +277,13 @@ export class HnSource {
     this.reconciledEpoch = epoch;
     this.failed = false;
     this.syncListeners();
+    await Promise.all(
+      [...this.threads.values()].map((thread) =>
+        thread.reconcile().catch(() => {
+          thread.failed = true;
+        }),
+      ),
+    );
   }
   copy(): SourceSnapshot {
     return {
@@ -255,12 +295,19 @@ export class HnSource {
       items: new Map(this.snapshot.items),
       itemReceipts: new Map(this.snapshot.itemReceipts),
       feedReceipts: { ...this.snapshot.feedReceipts! },
+      threads: [...this.threads.values()]
+        .map((thread) => thread.copy())
+        .filter((thread): thread is ThreadSnapshot => thread !== null),
     };
   }
   async close() {
     this.closed = true;
     this.unsubscribers.forEach((stop) => stop());
     this.listeners.forEach((stop) => stop());
+    await Promise.all([
+      ...this.closingThreads,
+      ...[...this.threads.values()].map((thread) => thread.close()),
+    ]);
     goOffline(this.db);
     await deleteApp(this.app);
   }

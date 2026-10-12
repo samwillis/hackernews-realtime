@@ -1,4 +1,4 @@
-import { readFile } from "node:fs/promises";
+import { migrate } from "../ingest/migrate";
 import { Pool } from "pg";
 const pool = new Pool({
   connectionString:
@@ -9,12 +9,7 @@ try {
   const client = await pool.connect();
   try {
     await client.query("BEGIN");
-    await client.query(
-      await readFile(
-        new URL("../migrations/0001_hn.sql", import.meta.url),
-        "utf8",
-      ),
-    );
+    await migrate(client);
     await client.query("COMMIT");
     console.log("HN schema ready.");
   } catch (error) {

@@ -1,4 +1,4 @@
-# Realtime Hacker News — implementation plan and status
+# Hacker Realtime — implementation plan and status
 
 Status: implementation built and deployed; launch acceptance remains open. Prepared
 2026-10-12. See [measured validation](docs/validation.md) for completed checks
@@ -39,8 +39,8 @@ and [Function runtime limits](https://neon.com/docs/compute/functions/reference/
 
 ### First version
 
-- Match the standard HN page: orange header and Y logo, beige background,
-  Verdana typography, compact numbered rows, grey metadata, familiar navigation,
+- Match the standard HN page: orange header and square RT logo, beige background,
+  Verdana typography, compact numbered rows, grey metadata, top/new/submit navigation,
   and the usual More link. Check the current site at desktop and mobile sizes
   before implementing the layout. Keep Neon Realtime attribution in the footer.
 - Top and new feeds, 30 rows per page. Start by tracking the first 150 items of
@@ -49,39 +49,45 @@ and [Function runtime limits](https://neon.com/docs/compute/functions/reference/
   story fields without broken rows.
 - Update scores and comment counts in place; use subtle, brief highlights for
   changed values and new stories. Animate rank changes with reduced-motion support.
-- Place a small control row below the standard header: live/pause, a toggle
-  for highlighting changes, and a compact connection/freshness indicator.
+- Place live/pause, a toggle for highlighting changes, and a compact
+  connection/freshness indicator at the right of the orange header; wrap on mobile.
   Match the surrounding HN type size and spacing.
 - Pause freezes the displayed list while the live subscription continues.
   Resuming shows the latest state without replaying every animation.
 - Show connection state and source freshness separately so an active Realtime
   connection does not hide a stalled ingester.
-- Link comments/discuss, user profiles, voting, login, and Submit to the real
-  HN site. HN owns those interactions and their authentication.
+- Open story comment counts in local live nested discussions. Reply/comment,
+  profile, vote and Submit actions stay on real HN. Remove login from the header.
+- Watch up to three recently viewed discussions on the shared Firebase connection,
+  mirroring up to 500 comments per thread. Renew watches from the mounted browser
+  only; expire after 90 seconds. Show busy/stale/truncated states and original links.
+- Pulse only changed numbers and edited comment text. Expand arriving story/comment
+  rows, animate movement with stable IDs, and suppress motion on resume or when
+  reduced motion is requested. Allow comment branches to collapse.
 
 ### Navigation and interaction destinations
 
 Preserve standard labels and ordinary link behavior, including opening a link
 in another tab. The live comment count remains the discussion link label.
 
-| Element                        | Destination                                                                                                   |
-| ------------------------------ | ------------------------------------------------------------------------------------------------------------- |
-| Y logo / Hacker News title     | This demo's top feed.                                                                                         |
-| New                            | This demo's new feed.                                                                                         |
-| Story title                    | The original article URL; `https://news.ycombinator.com/item?id={id}` for a text post or missing article URL. |
-| Comments / discuss / story age | `https://news.ycombinator.com/item?id={id}`. Users read and comment on the original thread.                   |
-| Submit                         | `https://news.ycombinator.com/submit`.                                                                        |
-| Author                         | `https://news.ycombinator.com/user?id={username}`.                                                            |
-| Vote arrow                     | The original HN item page, where HN handles voting for signed-in users.                                       |
-| Login                          | `https://news.ycombinator.com/login`.                                                                         |
-| Other standard header links    | Their real HN pages until a matching feed is implemented locally.                                             |
+| Element                         | Destination                                            |
+| ------------------------------- | ------------------------------------------------------ |
+| RT logo / Hacker Realtime title | This demo's top feed.                                  |
+| Top / New                       | This demo's top / new feed.                            |
+| Story title                     | Original article URL; original HN item for text posts. |
+| Comments                        | Local live `/item?id={id}` thread.                     |
+| Story / comment age             | Original HN item.                                      |
+| Comment / reply                 | Original HN item / reply page.                         |
+| Submit                          | `https://news.ycombinator.com/submit`.                 |
+| Author                          | Original HN profile.                                   |
+| Vote arrow                      | Original HN item, where HN handles voting.             |
 
 URL-encode IDs, usernames, and any query parameters when constructing links.
 
 ### Follow-up work
 
 Add locally mirrored Ask/Show/Jobs feeds and optional Algolia search. Keep
-discussion and submission links pointing to the real HN site.
+reply and submission links pointing to the real HN site.
 
 ## Application architecture
 
@@ -127,6 +133,12 @@ membership and rank changes in a transaction. Fetch missing items before
 publishing their feed entries so the UI does not briefly show incomplete rows.
 Update source columns only when they differ, avoiding unnecessary writes and
 Realtime batches. Preserve IDs as React keys so changed ranks retain row identity.
+
+The discussion tables are `hn_threads` (watch expiry, health and truncation) and
+`hn_comments` (composite story/item key, parent, deterministic path/depth,
+text and deletion/dead state). Self-post text is stored on `hn_items.body`.
+Watched comments are written conditionally and atomically under the same lease.
+Thread queries order by path then item ID, including both composite key columns.
 
 ## Ingestion design
 
@@ -317,9 +329,10 @@ samples, and has a reproducible clean-checkout build/deployment documented.
   preserves the last rows and recovers to an authoritative snapshot.
 - Pause/resume, pagination, mobile use, and reduced motion remain usable.
 - The page retains the standard HN appearance, with extra controls confined to
-  the compact control row and attribution in the footer.
-- Comments/discuss and Submit lead to the real HN thread and submission form;
-  article, profile, vote, and login links have the specified destinations.
+  the orange header and attribution in the footer.
+- Comment counts open local live nested threads. Comment/reply and Submit
+  lead to the original HN discussion and submission form; article, profile
+  and vote links have the specified destinations.
 - No database credentials or Realtime sealing secret enter browser assets or Git.
 - A fresh checkout with empty `.sdk/`, `.local/`, and `node_modules/` can generate
   identical pinned package artifacts, install with the frozen lockfile, build,

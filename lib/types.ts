@@ -12,6 +12,7 @@ export interface Story {
   comments: number;
   type: string;
   committed_at: string;
+  body?: string | null;
 }
 export interface SourceHealth {
   state: "starting" | "healthy" | "reconnecting" | "degraded" | "stopped";

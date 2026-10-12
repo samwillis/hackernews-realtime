@@ -22,8 +22,8 @@ acceptance in [PLAN.md](../PLAN.md) is still open where listed below.
   preserves source rank after snapshots. Query-capability renewal was observed
   beyond the initial expiry.
 - Pause freezes IDs/ranks/scores/counts while ages continue advancing. Resume
-  applies current data. Comments, submissions, votes, profiles and login have
-  canonical HN destinations. Deployed More navigation showed 30 unique rows
+  applies current data. Comment counts now open local discussions; replies,
+  submissions, votes and profiles have canonical HN destinations. Deployed More navigation showed 30 unique rows
   with ranks 31–60. Keyboard Space toggles pause/resume and highlighting; Tab
   reaches the HN vote link with a visible focus outline.
 - Desktop appearance was compared with current HN. The deployed mobile page
@@ -35,6 +35,57 @@ acceptance in [PLAN.md](../PLAN.md) is still open where listed below.
   resource responses, toolchains and build artifacts are ignored by Git.
 - Package audit reported zero known vulnerabilities after replacing the full
   Firebase distribution with its app/database packages.
+
+## Live discussions and header update
+
+The October 12 follow-up is deployed as
+`hackernews-realtime-rmj3p34a0-samwillis-projects.vercel.app`, with the stable
+production alias above. Branding is Hacker Realtime, with a 22×22px RT mark
+and square RT favicon. Header navigation is top/new/submit. Pause, highlight,
+Realtime connection and upstream health controls are inside the orange header.
+
+- A new frozen install in the previously verified clean checkout passed the
+  TypeScript check, ten unit tests, and the pinned Vercel production build.
+  npm audit reported zero vulnerabilities. All 26 public build assets passed
+  a scan against the actual database credentials and sealing secret.
+- New unit coverage checks independent number pulses, retention/expiry during
+  overlapping updates, arrivals/moves/removals, safe HN comment formatting,
+  bounded/cyclic trees, nested order and strict story IDs.
+- The isolated database test passed with comments added: unchanged snapshots
+  write zero rows; edits/removals and deletion placeholders publish correctly;
+  an invalid tree rolls back feed and comment changes; unauthorized publication
+  fails under the same fencing checks.
+- The real-source local handoff test passed with a watched discussion. The
+  successor warmed the tree, retained comments and reported healthy after
+  promotion. Handoff-to-promotion measured 106ms in that run.
+- The staging migration and updated native ingester were applied. A real story
+  loaded 162 nested comment rows over Neon Realtime, then grew to 165 while the
+  local page remained open. Both story and comment query capabilities renewed
+  without browser errors. Production SSR and live connections were verified
+  through the stable alias; comment/reply links point to the original HN item.
+- `/dev/updates` provides development-only buttons for deterministic animation
+  checks. It requires HN_FIXTURE=1 and returns 404 in production. Browser checks
+  found only a score span or comment-count span pulsing after their respective
+  updates, with no structural row highlight. New rows had intermediate height
+  and opacity during expansion; reordered rows had intermediate translateY and
+  background values. The same checks passed for edited/inserted/reordered
+  comments. Collapsing a parent hid its descendants and expanding restored them.
+- In the deployed thread, keyboard pause kept all 169 comment IDs/commit markers
+  unchanged while upstream comments continued arriving. Resume applied 173 rows
+  with zero field pulses or structural highlights. Native scheduled transfers at
+  20:24, 20:26 and 20:28 UTC promoted in approximately 157, 33 and 11ms while the
+  discussion was watched; no source/session/watch failure events were recorded.
+- The production mobile discussion was checked at 390×844: document and page
+  widths both measured 390px, RT measured 22×22px, the header controls wrapped,
+  and nested replies remained readable. Keyboard Space toggled pause.
+
+The demo currently watches three distinct discussions at once, with up to 500
+comments per thread. Watches expire 90 seconds after their last renewal. Busy
+threads retry, showing cached rows and an explicit upstream-busy indicator.
+Large discussions link to the complete original HN thread. These bounds have
+functional coverage; broader discussion-load measurement remains outstanding.
+The earlier launch checks below continue to apply, including deployed reduced
+motion and injected failures.
 
 ## Ingestion evidence
 

@@ -1,5 +1,6 @@
+import { migrate } from "../ingest/migrate";
 import { spawn, type ChildProcess } from "node:child_process";
-import { readFile, writeFile } from "node:fs/promises";
+import { writeFile } from "node:fs/promises";
 import { setTimeout as delay } from "node:timers/promises";
 import { Pool } from "pg";
 const schema = `hn_recovery_${Date.now()}`;
@@ -39,12 +40,7 @@ const lease = async () =>
   (await pool.query("SELECT * FROM ingest_leases WHERE id=1")).rows[0];
 try {
   await admin.query(`CREATE SCHEMA ${schema}`);
-  await pool.query(
-    await readFile(
-      new URL("../migrations/0001_hn.sql", import.meta.url),
-      "utf8",
-    ),
-  );
+  await migrate(pool);
   const first = launch();
   await waitFor(
     async () =>

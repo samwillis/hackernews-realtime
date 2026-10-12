@@ -1,9 +1,10 @@
+import { migrate } from "../ingest/migrate";
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { readFile } from "node:fs/promises";
 import { Pool } from "pg";
 import { Leases, LostLease } from "../ingest/lease";
 import { publish } from "../ingest/store";
+import type { ThreadSnapshot } from "../ingest/threads";
 test(
   "database fencing, atomic membership and conditional updates",
   { skip: !process.env.RUN_DB_TESTS },
@@ -19,12 +20,7 @@ test(
       max: 4,
     });
     try {
-      await pool.query(
-        await readFile(
-          new URL("../migrations/0001_hn.sql", import.meta.url),
-          "utf8",
-        ),
-      );
+      await migrate(pool);
       const a = new Leases(pool, "a", Date.now() + 120000, 60000, 30000);
       const b = new Leases(pool, "b", Date.now() + 120000, 60000, 30000);
       const [first, second] = await Promise.all([a.acquire(), b.acquire()]);
@@ -61,6 +57,117 @@ test(
         (await pool.query("SELECT count(*) FROM hn_feed_entries")).rows[0]
           .count,
         "4",
+      );
+      await pool.query("INSERT INTO hn_threads(story_id) VALUES(1)");
+      const thread: ThreadSnapshot = {
+        story: snapshot.items.get(1)!,
+        truncated: false,
+        receivedAt: Date.now(),
+        rows: [
+          {
+            item: {
+              id: 11,
+              type: "comment",
+              text: "hello",
+              by: "alice",
+              time: 123,
+            },
+            parentId: 1,
+            path: "000001",
+            depth: 0,
+          },
+          {
+            item: { id: 12, type: "comment", text: "reply" },
+            parentId: 11,
+            path: "000001.000001",
+            depth: 1,
+          },
+        ],
+      };
+      assert.equal(
+        await publish(pool, winner, winnerToken, {
+          ...snapshot,
+          threads: [thread],
+        }),
+        2,
+      );
+      assert.equal(
+        await publish(pool, winner, winnerToken, {
+          ...snapshot,
+          threads: [thread],
+        }),
+        0,
+      );
+      const edited = {
+        ...thread,
+        rows: [
+          {
+            ...thread.rows[0],
+            item: { ...thread.rows[0].item, text: "edited" },
+          },
+        ],
+      };
+      assert.equal(
+        await publish(pool, winner, winnerToken, {
+          ...snapshot,
+          threads: [edited],
+        }),
+        2,
+      );
+      assert.equal(
+        (await pool.query("SELECT text FROM hn_comments WHERE story_id=1"))
+          .rows[0].text,
+        "edited",
+      );
+      const invalid = {
+        ...thread,
+        rows: [{ ...thread.rows[0], parentId: 99 }],
+      };
+      await assert.rejects(
+        publish(pool, winner, winnerToken, {
+          ...snapshot,
+          feeds: { top: [2, 1], new: [1] },
+          threads: [invalid],
+        }),
+        /Invalid thread snapshot/,
+      );
+      assert.deepEqual(
+        (
+          await pool.query(
+            "SELECT item_id FROM hn_feed_entries WHERE feed='top' ORDER BY rank",
+          )
+        ).rows.map((row) => row.item_id),
+        [1, 2],
+      );
+      assert.equal(
+        (await pool.query("SELECT text FROM hn_comments WHERE story_id=1"))
+          .rows[0].text,
+        "edited",
+      );
+      const deleted = {
+        ...edited,
+        rows: [
+          {
+            ...edited.rows[0],
+            item: { ...edited.rows[0].item, text: "", deleted: true },
+          },
+        ],
+      };
+      assert.equal(
+        await publish(pool, winner, winnerToken, {
+          ...snapshot,
+          threads: [deleted],
+        }),
+        1,
+      );
+      await assert.rejects(
+        publish(pool, loser, winnerToken, { ...snapshot, threads: [thread] }),
+        LostLease,
+      );
+      assert.equal(
+        (await pool.query("SELECT deleted FROM hn_comments WHERE story_id=1"))
+          .rows[0].deleted,
+        true,
       );
       await pool.query(
         "UPDATE ingest_leases SET active_session_end=clock_timestamp()+interval '10 seconds'",

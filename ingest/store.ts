@@ -1,6 +1,7 @@
 import type { Pool } from "pg";
 import { Leases } from "./lease";
 import type { SourceSnapshot, HnItem } from "./source";
+import { publishThread } from "./thread-store";
 export function itemRecord(item: HnItem, committedAt: string) {
   return {
     id: item.id,
@@ -14,6 +15,7 @@ export function itemRecord(item: HnItem, committedAt: string) {
     deleted: Boolean(item.deleted || !item.title),
     dead: Boolean(item.dead),
     committed_at: committedAt,
+    body: item.text ?? null,
   };
 }
 export async function publish(
@@ -31,21 +33,30 @@ export async function publish(
     const ids = new Set([...snapshot.feeds.top, ...snapshot.feeds.new]);
     if ([...ids].some((id) => !snapshot.items.has(id)))
       throw new Error("Feed snapshot is incomplete");
-    const records = [...ids].map((id) =>
-      itemRecord(snapshot.items.get(id)!, committedAt),
+    const sourceItems = new Map(
+      [...ids].map((id) => [id, snapshot.items.get(id)!]),
+    );
+    for (const thread of snapshot.threads ?? [])
+      sourceItems.set(thread.story.id, thread.story);
+    const records = [...sourceItems.values()].map((item) =>
+      itemRecord(item, committedAt),
     );
     const { rowCount: changedItems, rows: updatedItems } = await client.query(
-      `INSERT INTO hn_items SELECT * FROM jsonb_to_recordset($1::jsonb)
-      AS x(id integer,type text,title text,url text,author text,created integer,score integer,comments integer,deleted boolean,dead boolean,committed_at text)
+      `INSERT INTO hn_items(id,type,title,url,author,created,score,comments,deleted,dead,committed_at,body) SELECT * FROM jsonb_to_recordset($1::jsonb)
+      AS x(id integer,type text,title text,url text,author text,created integer,score integer,comments integer,deleted boolean,dead boolean,committed_at text,body text)
       ON CONFLICT(id) DO UPDATE SET type=EXCLUDED.type,title=EXCLUDED.title,url=EXCLUDED.url,author=EXCLUDED.author,
-      created=EXCLUDED.created,score=EXCLUDED.score,comments=EXCLUDED.comments,deleted=EXCLUDED.deleted,dead=EXCLUDED.dead,committed_at=EXCLUDED.committed_at
-      WHERE (hn_items.type,hn_items.title,hn_items.url,hn_items.author,hn_items.created,hn_items.score,hn_items.comments,hn_items.deleted,hn_items.dead)
-      IS DISTINCT FROM (EXCLUDED.type,EXCLUDED.title,EXCLUDED.url,EXCLUDED.author,EXCLUDED.created,EXCLUDED.score,EXCLUDED.comments,EXCLUDED.deleted,EXCLUDED.dead) RETURNING id`,
+      created=EXCLUDED.created,score=EXCLUDED.score,comments=EXCLUDED.comments,deleted=EXCLUDED.deleted,dead=EXCLUDED.dead,committed_at=EXCLUDED.committed_at,body=EXCLUDED.body
+      WHERE (hn_items.type,hn_items.title,hn_items.url,hn_items.author,hn_items.created,hn_items.score,hn_items.comments,hn_items.deleted,hn_items.dead,hn_items.body)
+      IS DISTINCT FROM (EXCLUDED.type,EXCLUDED.title,EXCLUDED.url,EXCLUDED.author,EXCLUDED.created,EXCLUDED.score,EXCLUDED.comments,EXCLUDED.deleted,EXCLUDED.dead,EXCLUDED.body) RETURNING id`,
       [JSON.stringify(records)],
     );
     let changedEntries = 0;
     const received = updatedItems.map(
-      (row) => snapshot.itemReceipts?.get(row.id) ?? snapshot.receivedAt,
+      (row) =>
+        (snapshot.threads ?? []).find((thread) => thread.story.id === row.id)
+          ?.receivedAt ??
+        snapshot.itemReceipts?.get(row.id) ??
+        snapshot.receivedAt,
     );
     for (const feed of ["top", "new"] as const) {
       const ids = snapshot.feeds[feed];
@@ -62,9 +73,15 @@ export async function publish(
       if (removed.rowCount || ranked.rowCount)
         received.push(snapshot.feedReceipts?.[feed] || snapshot.receivedAt);
     }
+    let changedComments = 0;
+    for (const thread of snapshot.threads ?? []) {
+      const changed = await publishThread(client, thread, committedAt);
+      changedComments += changed;
+      if (changed) received.push(thread.receivedAt);
+    }
     // Recheck expiry immediately before commit; the row lock fences a concurrent takeover.
     await leases.assert(client, fencing);
-    const changed = (changedItems ?? 0) + changedEntries;
+    const changed = (changedItems ?? 0) + changedEntries + changedComments;
     if (changed) {
       await client.query(
         `UPDATE ingest_status SET committed_at=clock_timestamp(), source_event_at=$1, owner=$2, writes=writes+$3 WHERE id=1`,
@@ -78,6 +95,7 @@ export async function publish(
           JSON.stringify({
             changedItems,
             changedEntries,
+            changedComments,
             receivedAt: oldestReceived,
             commitAt: committedAt,
             latencyMs: Date.now() - oldestReceived,

@@ -1,6 +1,7 @@
+import { migrate } from "../ingest/migrate";
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { readFile, writeFile } from "node:fs/promises";
+import { writeFile } from "node:fs/promises";
 import { setTimeout as delay } from "node:timers/promises";
 import { Pool } from "pg";
 import { runSession } from "../ingest/session";
@@ -39,12 +40,7 @@ test(
     };
     try {
       await admin.query(`CREATE SCHEMA ${schema}`);
-      await pool.query(
-        await readFile(
-          new URL("../migrations/0001_hn.sql", import.meta.url),
-          "utf8",
-        ),
-      );
+      await migrate(pool);
       const options = {
         budgetMs: 90000,
         tenureMs: 30000,
@@ -69,6 +65,23 @@ test(
       ).rows[0];
       assert.equal(waiting.active_owner, "first");
       assert.equal(waiting.owned, true);
+      const storyId = (
+        await pool.query(
+          "SELECT id FROM hn_items WHERE comments BETWEEN 1 AND 100 AND NOT deleted AND NOT dead ORDER BY comments DESC LIMIT 1",
+        )
+      ).rows[0]?.id;
+      assert.ok(storyId, "A live discussion is available");
+      await pool.query("INSERT INTO hn_threads(story_id) VALUES($1)", [
+        storyId,
+      ]);
+      await waitFor(
+        async () =>
+          (
+            await pool.query("SELECT 1 FROM hn_comments WHERE story_id=$1", [
+              storyId,
+            ])
+          ).rowCount! > 0,
+      );
       const started = Date.now();
       const second = runSession(pool, { ...options, owner: "second" });
       sessions.push(second);
@@ -78,6 +91,21 @@ test(
         (await pool.query("SELECT owner,state FROM ingest_status")).rows.some(
           (row) => row.owner === "second" && row.state === "healthy",
         ),
+      );
+      assert.equal(
+        (
+          await pool.query("SELECT state FROM hn_threads WHERE story_id=$1", [
+            storyId,
+          ])
+        ).rows[0].state,
+        "healthy",
+      );
+      assert.ok(
+        (
+          await pool.query("SELECT 1 FROM hn_comments WHERE story_id=$1", [
+            storyId,
+          ])
+        ).rowCount! > 0,
       );
       const events = (
         await pool.query(

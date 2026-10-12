@@ -1,10 +1,13 @@
-# Realtime Hacker News
+# Hacker Realtime
 
 Hacker News with live stories, scores, comment counts and source ranking, powered
 by Neon Realtime. Top and new feeds mirror the first 150 source items and show
 30 rows per page. Pause freezes story data while the subscription stays open;
-resume applies the latest ordered snapshot. Discussions, submissions, voting,
-profiles and login link to the real Hacker News site.
+resume applies the latest ordered snapshot. Story comment links open live nested
+threads in the demo. Replies, submissions, voting and profiles link to the real
+Hacker News site. The orange header contains a square RT mark, top/new/submit
+navigation and right-aligned live controls. Changed scores and counts pulse
+individually; inserted rows expand and reordered rows animate.
 
 Demo: [hackernews-realtime.vercel.app](https://hackernews-realtime.vercel.app/).
 The demo uses Neon staging; [validation](docs/validation.md) records the current
@@ -30,7 +33,8 @@ Open [localhost:3000](http://localhost:3000). The current workspace already has
 configured staging credentials in its ignored `.env.local`; keep that file.
 The shared staging ingester runs independently of the local web server.
 For UI work without a database, use `HN_FIXTURE=1 npm run dev`. Fixture mode is
-explicit and disabled in production.
+explicit and disabled in production. Open `/dev/updates` in fixture mode for
+button-driven story/comment updates, arrivals, moves and pause/resume checks.
 
 ## Ingestion
 
@@ -79,6 +83,23 @@ To stop scheduled ingestion, set `ENABLE_INGEST=0` and run `npm run ingest:deplo
 Existing requests finish by their recorded deadlines; browser rows then remain
 visible with a stale-source indicator. Do not seed a branch already owned by
 an active ingester.
+
+## Live discussions
+
+Click a story's comment count to open `/item?id=…`. Story metadata and nested
+comments use separate fixed sealed queries over the same Realtime client.
+The page renews its watch every ten seconds; the shared ingester discovers
+watches every five seconds and uses its existing Firebase connection. Both
+roles warm the watched trees before handoff. Comments publish in the same
+fenced transaction as feed data. Text is rendered from a small HTML allowlist.
+Deleted/dead comments remain placeholders, and branches can be collapsed.
+
+The staging demo bounds ingestion to **three distinct watched stories** and
+**up to 500 comments per story**. Watches expire 90 seconds after the last
+renewal. A fourth discussion shows cached data with an HN-updates-busy indicator
+and retries automatically. Large discussions link to the full original thread.
+Prefetching a story link does not register a watch. These limits are explicit in
+`lib/comments.ts`; raise them only with ingestion/load measurements.
 
 ## Checks
 
