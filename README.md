@@ -1,7 +1,8 @@
 # Realtime Hacker News
 
-A familiar Hacker News interface that updates as real stories gain points,
-receive comments, enter a feed, or change rank. A launch demo for Neon Realtime.
+The standard Hacker News look, with live story updates and a few discreet
+controls. Stories gain points, receive comments, enter a feed, and change rank
+without a page refresh. A launch demo for Neon Realtime.
 
 ## Status
 
@@ -26,7 +27,15 @@ Postgres. The browser subscribes to live SQL results through Neon Realtime.
 The Next.js server supplies initial rows and short-lived sealed queries.
 
 Initial scope: the top and new feeds, 30 stories per page, with live scores,
-comment counts, and ranking changes. Voting and commenting link to Hacker News.
+comment counts, and ranking changes. Preserve HN's orange header, typography,
+colors, compact rows, and navigation. Add a small live/pause control,
+change-highlighting toggle, and connection/freshness indicator below the header.
+Keep Neon attribution in the footer.
+
+Discussion links open the original story on Hacker News, and Submit opens
+[HN's submission page](https://news.ycombinator.com/submit). Hacker News handles
+commenting, submissions, voting, and login; story titles open the original
+article, with the HN discussion as the fallback for text posts.
 
 ## Proposed stack
 

@@ -4,10 +4,11 @@ Status: draft. Prepared 2026-10-12.
 
 ## Goal
 
-Build a recognizable Hacker News interface backed by real HN data. Stories,
-scores, comment counts, and feed positions update through Neon Realtime while
-the page remains open. The demo should be easy to run locally and suitable for
-sharing at launch.
+Match the normal Hacker News interface, adding a few discreet controls for
+live updates. Stories, scores, comment counts, and feed positions update
+through Neon Realtime while the page remains open. Commenting and submissions
+take place on the real Hacker News site. The demo should be easy to run locally
+and suitable for sharing at launch.
 
 ## Confirmed findings
 
@@ -36,26 +37,49 @@ and [Function runtime limits](https://neon.com/docs/compute/functions/reference/
 
 ### First version
 
-- Match the familiar orange header, compact story rows, numbering, metadata,
-  and page navigation, with a small Neon Realtime attribution.
+- Match the standard HN page: orange header and Y logo, beige background,
+  Verdana typography, compact numbered rows, grey metadata, familiar navigation,
+  and the usual More link. Check the current site at desktop and mobile sizes
+  before implementing the layout. Keep Neon Realtime attribution in the footer.
 - Top and new feeds, 30 rows per page. Start by tracking the first 150 items of
   each feed; their union bounds upstream subscriptions and database work.
 - Use the source feed order for ranking. Support jobs and missing optional
   story fields without broken rows.
-- Update scores and comment counts in place; briefly highlight changed values
-  and new stories. Animate rank changes with reduced-motion support.
-- Offer pause/resume for the displayed list while the live subscription
-  continues. Resuming shows the latest state without replaying every animation.
+- Update scores and comment counts in place; use subtle, brief highlights for
+  changed values and new stories. Animate rank changes with reduced-motion support.
+- Place a small control row below the standard header: live/pause, a toggle
+  for highlighting changes, and a compact connection/freshness indicator.
+  Match the surrounding HN type size and spacing.
+- Pause freezes the displayed list while the live subscription continues.
+  Resuming shows the latest state without replaying every animation.
 - Show connection state and source freshness separately so an active Realtime
   connection does not hide a stalled ingester.
-- Link story discussions, user profiles, voting, and submission actions to HN.
-  The public API does not provide a write flow for these actions.
+- Link comments/discuss, user profiles, voting, login, and Submit to the real
+  HN site. HN owns those interactions and their authentication.
+
+### Navigation and interaction destinations
+
+Preserve standard labels and ordinary link behavior, including opening a link
+in another tab. The live comment count remains the discussion link label.
+
+| Element | Destination |
+| --- | --- |
+| Y logo / Hacker News title | This demo's top feed. |
+| New | This demo's new feed. |
+| Story title | The original article URL; `https://news.ycombinator.com/item?id={id}` for a text post or missing article URL. |
+| Comments / discuss / story age | `https://news.ycombinator.com/item?id={id}`. Users read and comment on the original thread. |
+| Submit | `https://news.ycombinator.com/submit`. |
+| Author | `https://news.ycombinator.com/user?id={username}`. |
+| Vote arrow | The original HN item page, where HN handles voting for signed-in users. |
+| Login | `https://news.ycombinator.com/login`. |
+| Other standard header links | Their real HN pages until a matching feed is implemented locally. |
+
+URL-encode IDs, usernames, and any query parameters when constructing links.
 
 ### Follow-up work
 
-Add live discussion pages, Ask/Show/Jobs feeds, and optional Algolia search.
-Comment pages will require bounded tree loading, updates to parent/child
-relationships, and sanitized rendering of HN's HTML bodies.
+Add locally mirrored Ask/Show/Jobs feeds and optional Algolia search. Keep
+discussion and submission links pointing to the real HN site.
 
 ## Application architecture
 
@@ -144,7 +168,8 @@ keep an invocation alive after its response.
 - Add the Next.js/TypeScript app, Drizzle schema, repeatable schema setup, and
   local package-build scripts. Record prerequisite Node and package-manager
   versions and commit the dependency lockfile.
-- Seed a bounded real HN snapshot and render the top/new pages from Postgres.
+- Seed a bounded real HN snapshot and render the top/new pages from Postgres
+  using the standard HN layout and canonical external interaction links.
 - Add server-side sealing and the browser Realtime provider, including renewal.
 
 Exit: the HN layout renders initial rows and committed database changes reach
@@ -164,8 +189,10 @@ effective writer, and ingestion recovers after an interrupted session.
 
 ### 4. Polish, verify, and deploy
 
-- Add highlights, row transitions, pause/resume, mobile layout, keyboard access,
-  reduced motion, and clear stale/error states.
+- Add the compact live/pause and highlighting controls, subtle row transitions,
+  mobile layout, keyboard access, reduced motion, and clear stale/error states.
+- Compare the demo with the current HN layout at desktop and mobile sizes,
+  checking header, fonts, colors, row density, spacing, and navigation.
 - Decode titles into escaped text and validate outbound URL schemes.
 - Run type checking and a production build. Exercise the meaningful ingestion
   and browser checks below; add focused automated coverage for lease fencing,
@@ -191,6 +218,10 @@ Realtime capability renewal, with a reproducible setup documented.
 - An upstream interruption marks source data stale; a Realtime disconnect
   preserves the last rows and recovers to an authoritative snapshot.
 - Pause/resume, pagination, mobile use, and reduced motion remain usable.
+- The page retains the standard HN appearance, with extra controls confined to
+  the compact control row and attribution in the footer.
+- Comments/discuss and Submit lead to the real HN thread and submission form;
+  article, profile, vote, and login links have the specified destinations.
 - No database credentials or Realtime sealing secret enter browser assets or Git.
 
 ## Decisions to resolve during implementation
