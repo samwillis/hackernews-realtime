@@ -1,0 +1,53 @@
+{
+  "name": "hackernews-realtime",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": "22.x"
+  },
+  "packageManager": "npm@10.9.8",
+  "scripts": {
+    "bootstrap": "node scripts/bootstrap.mjs",
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "typecheck": "tsc --noEmit",
+    "test": "node --import tsx --test tests/*.test.ts",
+    "db:setup": "node --env-file-if-exists=.env.local --import tsx scripts/setup.ts",
+    "ingest": "node --env-file-if-exists=.env.local --import tsx scripts/ingest.ts",
+    "ingest:deploy": "node --env-file=.env.local scripts/deploy-ingest.mjs",
+    "test:db": "RUN_DB_TESTS=1 node --env-file=.env.local --import tsx --test tests/database.test.ts",
+    "test:handoff": "RUN_SOURCE_TESTS=1 node --env-file=.env.local --import tsx --test tests/session.test.ts",
+    "test:recovery": "node --env-file=.env.local --import tsx scripts/recovery-probe.ts",
+    "test:clean": "node scripts/clean-build.mjs",
+    "seed": "node --env-file-if-exists=.env.local --import tsx scripts/seed.ts",
+    "neon": "node scripts/neon.mjs"
+  },
+  "dependencies": {
+    "@neon/functions": "0.11.0",
+    "@neon/realtime": "file:.sdk/neon-realtime.tgz",
+    "@neon/realtime-react": "file:.sdk/neon-realtime-react.tgz",
+    "@neon/realtime-drizzle": "file:.sdk/neon-realtime-drizzle.tgz",
+    "@vercel/functions": "3.9.11",
+    "drizzle-orm": "0.45.2",
+    "@firebase/app": "0.16.2",
+    "@firebase/database": "1.1.5",
+    "he": "1.2.0",
+    "next": "16.3.8",
+    "pg": "8.16.3",
+    "react": "19.3.0",
+    "react-dom": "19.3.0"
+  },
+  "devDependencies": {
+    "@neon/config": "file:.sdk/neon-config.tgz",
+    "@neon/sdk": "file:.sdk/neon-sdk.tgz",
+    "@types/he": "1.2.3",
+    "@types/node": "24.19.1",
+    "@types/pg": "8.23.1",
+    "@types/react": "19.3.0",
+    "@types/react-dom": "19.3.0",
+    "tsx": "4.23.15",
+    "typescript": "5.9.3"
+  }
+}

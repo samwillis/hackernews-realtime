@@ -1,0 +1,22 @@
+{
+  "repository": "https://github.com/neondatabase/neon-pkgs.git",
+  "commit": "3c08c9b45a919515a7b79977fa6267f828ce52d5",
+  "node": "22.23.2",
+  "packageManager": "pnpm@10.30.3",
+  "vercelCli": "48.10.10",
+  "cli": "packages/cli/dist/cli.js",
+  "packages": [
+    "realtime",
+    "realtime-react",
+    "realtime-drizzle",
+    "config",
+    "sdk"
+  ],
+  "integrities": {
+    "neon-realtime.tgz": "sha512-z8vvBcbCindQA3KuWEWr2Ne3M6a9jxOIFbA71n19dGCXjlqO25sXIlARSyTgjRC0MjF21gePrnB7LMX0MLWK2w==",
+    "neon-realtime-react.tgz": "sha512-WUXohZ2aXXEWMp4TVk3+ZYohSiWN9GgX+uiTMuES2LslbN8m4IXAOFCZqBPlO9mSkzB1Sok7/48KxxEBtBPMMw==",
+    "neon-realtime-drizzle.tgz": "sha512-xRH+O7j6t9wRHuJTYBDxchkk9486OLRgs7UtS2FLWRll+bz0Z+ZgY3FDsJNUX3etFUkAmfYxarBjPLjN6zRpvg==",
+    "neon-config.tgz": "sha512-oKRmIv9ae0cCdxz2nuN0/MG+VECfyIxbJxqVNv6XmHjmnlHUkp2YB3+Hzhd+E9Phr3VsU/RUaKDGVge3/lLtlw==",
+    "neon-sdk.tgz": "sha512-CAueh0VbOn7IsOIVm7T/4fO0JEtiBtpHCtjvkG9omaQhI9YovFBebV+/V3MCfDjjtT1c56jOCZ3E77FrQoWDyw=="
+  }
+}

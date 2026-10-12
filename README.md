@@ -1,71 +1,116 @@
 # Realtime Hacker News
 
-The standard Hacker News look, with live story updates and a few discreet
-controls. Stories gain points, receive comments, enter a feed, and change rank
-without a page refresh. A launch demo for Neon Realtime.
+Hacker News with live stories, scores, comment counts and source ranking, powered
+by Neon Realtime. Top and new feeds mirror the first 150 source items and show
+30 rows per page. Pause freezes story data while the subscription stays open;
+resume applies the latest ordered snapshot. Discussions, submissions, voting,
+profiles and login link to the real Hacker News site.
 
-## Status
+Demo: [hackernews-realtime.vercel.app](https://hackernews-realtime.vercel.app/).
+The demo uses Neon staging; [validation](docs/validation.md) records the current
+evidence and remaining launch checks.
 
-Repository initialized. The implementation plan is a draft in [PLAN.md](PLAN.md).
-The application and ingestion function will be added in the implementation phases.
+## Run locally
 
-## Proposed architecture
+Use Node **22.23.2**, npm **10.9.8**, and Git. The bootstrap uses pinned
+pnpm 10.30.3 to build Neon's unpublished SDK and CLI inside `.local/`.
+
+```sh
+npm run bootstrap
+npm ci
+cp -n .env.example .env.local
+# Fill DATABASE_URL, DATABASE_URL_UNPOOLED, NEON_REALTIME_SECRET,
+# NEXT_PUBLIC_NEON_REALTIME_URL from your Neon Realtime branch.
+npm run db:setup
+npm run seed
+npm run dev
+```
+
+Open [localhost:3000](http://localhost:3000). The current workspace already has
+configured staging credentials in its ignored `.env.local`; keep that file.
+The shared staging ingester runs independently of the local web server.
+For UI work without a database, use `HN_FIXTURE=1 npm run dev`. Fixture mode is
+explicit and disabled in production.
+
+## Ingestion
 
 ```mermaid
 flowchart LR
-    HN["Official Hacker News API"] --> Ingest["Neon Function: ingestion"]
-    Trigger["Scheduled Function Trigger"] --> Ingest
-    Ingest --> DB["Neon Postgres"]
-    DB --> Realtime["Neon Realtime"]
-    Realtime --> UI["Next.js / React UI"]
-    App["Next.js server: initial data + sealed queries"] --> UI
-    DB --> App
+  HN[HN Firebase subscriptions] --> Function[Neon Function]
+  Schedule[One-minute trigger] --> Function
+  Function --> PG[Neon Postgres]
+  PG --> RT[Neon Realtime]
+  RT --> Browser[HN interface]
+  PG --> Next[Next.js SSR and query sealing]
+  Next --> Browser
 ```
 
-One shared ingester mirrors a bounded set of stories and feed positions into
-Postgres. The browser subscribes to live SQL results through Neon Realtime.
-The Next.js server supplies initial rows and short-lived sealed queries. Feed
-results carry source ranks and are explicitly sorted before display. A prepared
-standby ingester takes over at session boundaries; the plan targets handoffs
-within five seconds and verifies that target on staging.
+One active writer and one prepared standby share a Postgres lease with a fencing
+token. Each transaction checks ownership and expiry under a row lock. Feed
+membership is published atomically with complete item records, and unchanged
+rows are not rewritten. Firebase multiplexes the bounded item listeners;
+authoritative REST reconciliation runs every minute and after reconnects.
+Source health is independent of the browser's Realtime connection.
+If a scheduled successor arrives late, the active worker keeps publishing while
+waiting, bounded by its original request deadline.
 
-Initial scope: the top and new feeds, 30 stories per page, with live scores,
-comment counts, and ranking changes. Preserve HN's orange header, typography,
-colors, compact rows, and navigation. Add a small live/pause control,
-change-highlighting toggle, and connection/freshness indicator below the header.
-Keep Neon attribution in the footer.
+The staged configuration uses a **two-minute active tenure**, a **90-second
+preparation window**, and a **four-minute absolute invocation budget**. The
+budget includes standby time and is never reset on promotion. Scheduled
+requests completed successfully after roughly three minutes. This establishes
+a working configuration without assuming the scheduler accepts the runtime's
+full fifteen-minute limit. See [validation](docs/validation.md) for evidence and
+remaining launch checks.
 
-Discussion links open the original story on Hacker News, and Submit opens
-[HN's submission page](https://news.ycombinator.com/submit). Hacker News handles
-commenting, submissions, voting, and login; story titles open the original
-article, with the HN discussion as the fallback for text posts.
+Set `INGEST_PROJECT_ID` and `INGEST_BRANCH_ID` to the dedicated shared branch,
+then set `ENABLE_INGEST=1` and run:
 
-## Proposed stack
+```sh
+npm run ingest:deploy
+```
 
-- Next.js, React, TypeScript, and Drizzle, adapting the Neon Realtime Next.js example.
-- Neon Postgres with Realtime enabled on staging.
-- Neon Functions with a scheduled Function Trigger for ingestion.
-- The official public Hacker News Firebase API for source data.
-- Locally built Neon SDK and CLI packages while the required releases are unpublished.
+The `neon.ts` policy always creates a disabled schedule. The deployment wrapper
+enables it only on the explicit target. Preview checkouts remain disabled.
+Public requests cannot start the deployed ingester: it accepts only verified
+native schedule deliveries. `npm run ingest` is a manual local invocation for
+development and respects the same lease. It skips if a worker owns the branch.
 
-## Configuration
+To stop scheduled ingestion, set `ENABLE_INGEST=0` and run `npm run ingest:deploy`.
+Existing requests finish by their recorded deadlines; browser rows then remain
+visible with a stale-source indicator. Do not seed a branch already owned by
+an active ingester.
 
-[.env.example](.env.example) lists the planned application variables. Real values
-belong in a gitignored `.env.local`. The database URLs and Realtime sealing
-secret stay on the server; only the Realtime WebSocket URL is public.
+## Checks
 
-[docs/neon-staging.md](docs/neon-staging.md) records the staging setup requirements.
-Exact install and run commands will be added once the app is scaffolded.
+```sh
+npm run typecheck
+npm test
+npm run test:db       # isolated schema; requires staging database credentials
+npm run test:handoff  # delayed standby with real HN in an isolated schema
+npm run test:recovery # real HN source; kills local workers in an isolated schema
+npm run test:clean    # empty SDK/source/dependencies; bootstrap, npm ci, build
+```
 
-[docs/prerelease-build.md](docs/prerelease-build.md) defines the clean-checkout
-package bootstrap and prebuilt Vercel deployment. SDK tarballs are generated
-from pinned source before dependency installation. UI work starts alongside
-the staging lifecycle checks using a development-only story fixture.
+Database/recovery probes create and remove only their uniquely named test
+schemas. `NEXT_PUBLIC_MEASURE_REALTIME=1` enables public-data timing diagnostics
+in the browser console. Keep it at `0` for routine use.
+
+## Deploy the web app
+
+Use the pinned prebuilt Vercel workflow in
+[docs/prerelease-build.md](docs/prerelease-build.md). Configure server secrets
+with `node scripts/vercel-env.mjs production`; only the WebSocket endpoint is
+public. Add the exact deployed origin to `DEMO_ORIGIN`, then apply the Neon
+policy with `npm run ingest:deploy`.
+
+The toolchain pins Neon's source commit, package hashes and Vercel CLI version.
+Builds need no external Neon checkout. `.sdk/`, `.local/`, `.vercel/` and all
+credentials are ignored. Git-driven hosting installs need this same bootstrap
+before dependency installation.
 
 ## References
 
-- [Hacker News API](https://github.com/HackerNews/API)
-- [Firebase REST streaming](https://firebase.google.com/docs/reference/rest/database#section-streaming)
-- [Neon Realtime preview docs](https://neon-next-git-thruflo-realtime-3-integration-neondatabase.vercel.app/docs/realtime/)
-- [Neon Functions runtime limits](https://neon.com/docs/compute/functions/reference/runtime-limits)
-- [Scheduled Function Triggers](https://neon.com/docs/compute/functions/triggers/schedule)
+- [HN API](https://github.com/HackerNews/API)
+- [Realtime preview documentation](https://neon-next-git-thruflo-realtime-3-integration-neondatabase.vercel.app/docs/realtime/)
+- [Staging setup](docs/neon-staging.md)
+- [Design and acceptance targets](PLAN.md)

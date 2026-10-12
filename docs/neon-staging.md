@@ -2,7 +2,21 @@
 
 These notes summarize the user-supplied `NEON_REALTIME_SETUP.md`, dated
 2026-10-09, and the local Realtime examples. They are setup reference for the
-implementation; no staging resources have been provisioned for this repository.
+implementation. A dedicated demo project has now been provisioned in Sam's
+staging organization.
+
+| Resource            | Value                                           |
+| ------------------- | ----------------------------------------------- |
+| Project             | `hackernews-realtime` (`square-paper-24289554`) |
+| Organization        | Sam (`org-wandering-poetry-25631650`)           |
+| Branch              | main (`br-wild-star-w2vj64gc`)                  |
+| Region / database   | `aws-us-east-2`, PG18, `neondb`                 |
+| Function / schedule | `hningest` / `hnminute`, every minute           |
+
+Realtime, logical replication, Functions and scheduled triggers are working
+together on this branch. Credentials are in the ignored `.env.local`; raw
+management responses are in ignored `.local/`. The example project in the
+attachment was not used.
 
 ## Environment
 
@@ -34,9 +48,9 @@ the supplied guide is the intended owner of this demo.
 
 ## Prerelease tooling
 
-Build the required packages from the Neon packages checkout and the appropriate
-CLI PR refs. Record the exact refs and build commands in the repository when
-implementation begins. The supplied guide describes older placeholder npm
+The build pins Neon commit `3c08c9b45a919515a7b79977fa6267f828ce52d5`, which
+includes the merged CLI Realtime support, in `neon-toolchain.lock.json`.
+The supplied guide describes older placeholder npm
 packages, while the local examples reference `0.0.1`; verify package contents
 instead of treating either version number as proof of a usable release.
 

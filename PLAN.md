@@ -1,6 +1,8 @@
-# Realtime Hacker News — draft implementation plan
+# Realtime Hacker News — implementation plan and status
 
-Status: draft. Prepared 2026-10-12.
+Status: implementation built and deployed; launch acceptance remains open. Prepared
+2026-10-12. See [measured validation](docs/validation.md) for completed checks
+and outstanding launch acceptance work.
 
 ## Goal
 
@@ -62,17 +64,17 @@ and [Function runtime limits](https://neon.com/docs/compute/functions/reference/
 Preserve standard labels and ordinary link behavior, including opening a link
 in another tab. The live comment count remains the discussion link label.
 
-| Element | Destination |
-| --- | --- |
-| Y logo / Hacker News title | This demo's top feed. |
-| New | This demo's new feed. |
-| Story title | The original article URL; `https://news.ycombinator.com/item?id={id}` for a text post or missing article URL. |
-| Comments / discuss / story age | `https://news.ycombinator.com/item?id={id}`. Users read and comment on the original thread. |
-| Submit | `https://news.ycombinator.com/submit`. |
-| Author | `https://news.ycombinator.com/user?id={username}`. |
-| Vote arrow | The original HN item page, where HN handles voting for signed-in users. |
-| Login | `https://news.ycombinator.com/login`. |
-| Other standard header links | Their real HN pages until a matching feed is implemented locally. |
+| Element                        | Destination                                                                                                   |
+| ------------------------------ | ------------------------------------------------------------------------------------------------------------- |
+| Y logo / Hacker News title     | This demo's top feed.                                                                                         |
+| New                            | This demo's new feed.                                                                                         |
+| Story title                    | The original article URL; `https://news.ycombinator.com/item?id={id}` for a text post or missing article URL. |
+| Comments / discuss / story age | `https://news.ycombinator.com/item?id={id}`. Users read and comment on the original thread.                   |
+| Submit                         | `https://news.ycombinator.com/submit`.                                                                        |
+| Author                         | `https://news.ycombinator.com/user?id={username}`.                                                            |
+| Vote arrow                     | The original HN item page, where HN handles voting for signed-in users.                                       |
+| Login                          | `https://news.ycombinator.com/login`.                                                                         |
+| Other standard header links    | Their real HN pages until a matching feed is implemented locally.                                             |
 
 URL-encode IDs, usernames, and any query parameters when constructing links.
 
@@ -113,12 +115,12 @@ must not start ingestion.
 
 ## Database outline
 
-| Table | Purpose |
-| --- | --- |
-| `hn_items` | HN ID as primary key; type, title, URL, author, creation time, score, descendants, deletion/dead flags, and relevant source fields. |
-| `hn_feed_entries` | Composite key `(feed, item_id)` and source rank; indexed for feed pagination and joined to `hn_items`. |
-| `ingest_leases` | Separate active/standby slots; owner, expiry, heartbeat, planned session end, readiness, and an active fencing token to coordinate invocations across isolates. |
-| `ingest_status` | Last healthy connection check, successful reconciliation, source event, committed write, latest failure, and handoff/recovery timings for freshness reporting. |
+| Table             | Purpose                                                                                                                                                         |
+| ----------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `hn_items`        | HN ID as primary key; type, title, URL, author, creation time, score, descendants, deletion/dead flags, and relevant source fields.                             |
+| `hn_feed_entries` | Composite key `(feed, item_id)` and source rank; indexed for feed pagination and joined to `hn_items`.                                                          |
+| `ingest_leases`   | Separate active/standby slots; owner, expiry, heartbeat, planned session end, readiness, and an active fencing token to coordinate invocations across isolates. |
+| `ingest_status`   | Last healthy connection check, successful reconciliation, source event, committed write, latest failure, and handoff/recovery timings for freshness reporting.  |
 
 Use primary keys and `REPLICA IDENTITY FULL` on subscribed tables. Publish feed
 membership and rank changes in a transaction. Fetch missing items before
@@ -137,10 +139,11 @@ that standby slot is occupied. Only the active owner publishes feed writes.
 Keep all ownership decisions in Postgres because Functions can run multiple
 isolates.
 
-The proposed active session is around 12 minutes, returning a normal response
-before the runtime's 15-minute first-byte deadline. Verify the trigger caller's
-own timeout before committing to this duration; it is not specified in the
-docs reviewed so far. Both roles must finish their requests within that caller
+The implemented active session is two minutes, with a 90-second preparation
+window and a four-minute absolute request budget. Native scheduled deliveries
+completed after 120–181 seconds. The trigger caller's full fifteen-minute
+timeout remains unverified; the demo uses the shorter measured configuration.
+Both roles must finish their requests within the caller
 limit. Record an absolute request deadline on arrival, including standby
 preparation time and a cleanup margin. Promotion never resets that deadline;
 the new active tenure is capped by the invocation's remaining budget. If the
@@ -150,7 +153,7 @@ If no measured configuration meets the budgets below, the ingestion gate
 fails: record the limitation and propose a supported alternative before
 declaring the live demo ready. UI work can continue independently.
 
-Initial lease settings: renew every 5 seconds with a 20-second expiry. Verify
+Lease settings: renew every 5 seconds with a 20-second expiry. Verify
 the owner, unexpired lease, and fencing token under a row lock in every feed
 write transaction. A failed renewal stops publication and aborts pending work.
 Treat these settings as values to verify in the lifecycle probe.
@@ -194,13 +197,13 @@ These are implementation acceptance targets, not platform guarantees. Measure
 with correlated events/transaction IDs and synchronized clocks; include feed
 membership and rank changes as well as score/count updates.
 
-| Measurement | Acceptance target |
-| --- | --- |
-| HN event received by the active ingester to database commit | p95 <= 2 seconds; p99 <= 5 seconds. |
-| Committed change to sorted rows applied in an unpaused browser | p95 <= 2 seconds; p99 <= 5 seconds. |
-| Planned ownership handoff, from old owner stopping publication to new owner ready to publish | <= 5 seconds for every observed handoff. |
-| Forced active-worker termination to reconciled ingestion restored | <= 120 seconds. |
-| Source health reporting | Mark degraded within 30 seconds of failed checks or loss of ownership; show an explicit reconnect immediately when detected. |
+| Measurement                                                                                  | Acceptance target                                                                                                            |
+| -------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------- |
+| HN event received by the active ingester to database commit                                  | p95 <= 2 seconds; p99 <= 5 seconds.                                                                                          |
+| Committed change to sorted rows applied in an unpaused browser                               | p95 <= 2 seconds; p99 <= 5 seconds.                                                                                          |
+| Planned ownership handoff, from old owner stopping publication to new owner ready to publish | <= 5 seconds for every observed handoff.                                                                                     |
+| Forced active-worker termination to reconciled ingestion restored                            | <= 120 seconds.                                                                                                              |
+| Source health reporting                                                                      | Mark degraded within 30 seconds of failed checks or loss of ownership; show an explicit reconnect immediately when detected. |
 
 HN's delay before publishing an API event is outside these measurements. Record
 the source-received, committed, and browser-applied times separately. Validate
@@ -322,16 +325,17 @@ samples, and has a reproducible clean-checkout build/deployment documented.
   identical pinned package artifacts, install with the frozen lockfile, build,
   and deploy the prebuilt application without the developer's local checkout.
 
-## Decisions to resolve during implementation
+## Implementation decisions
 
-- Which staging organization should own the project, and does it have all
-  required feature access?
-- Which CLI PR refs and SDK commit form a working, reproducible package set?
-- What timeout does scheduled trigger delivery enforce in staging?
-- Which session and standby preparation durations meet the measured budgets
-  under the observed trigger caller timeout?
-- What application deployment domain should be allowed by Realtime?
-
-The first phase resolves the infrastructure questions alongside UI work. The
-measured budgets, explicit row ordering, and prebuilt deployment pipeline are
-the initial implementation requirements; record any agreed revisions here.
+- Sam's staging organization owns the dedicated `square-paper-24289554` project.
+  Functions, schedules, Realtime and PG18 work together on its main branch.
+- Neon commit `3c08c9b45a919515a7b79977fa6267f828ce52d5` includes the merged CLI
+  Realtime support. `neon-toolchain.lock.json` pins its build and artifact hashes.
+- Two-minute active sessions, 90-second preparation and a four-minute request
+  budget are deployed. Publication continues while a delayed successor is
+  awaited, up to that same absolute deadline. Fifteen-minute scheduled requests
+  remain unverified.
+- Vercel hosts [the demo](https://hackernews-realtime.vercel.app/); its stable
+  origin and configured preview origins are allowed by Realtime.
+- Build and deployment passed. The exact completed measurements and remaining
+  launch gates are recorded in [validation](docs/validation.md).

@@ -1,0 +1,7 @@
+.local/
+.sdk/
+.env*
+node_modules/
+.git/
+tests/
+docs/

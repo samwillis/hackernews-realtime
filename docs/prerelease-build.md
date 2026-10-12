@@ -1,76 +1,89 @@
-# Prerelease build and deployment plan
+# Prerelease package build and deployment
 
-Status: implementation requirements. The application, bootstrap script, and
-toolchain manifest will be created in the delivery phases in [PLAN.md](../PLAN.md).
+Use Node 22.23.2 and npm 10.9.8. `neon-toolchain.lock.json` pins Neon source
+commit `3c08c9b45a919515a7b79977fa6267f828ce52d5`, pnpm 10.30.3, SDK artifacts and
+Vercel CLI 48.10.10. The installed native Vercel CLI 62.2.0 failed to load its
+builder during this build; the pinned Node CLI succeeds.
 
-## Chosen deployment path
+## Build from a checkout
 
-Use a prebuilt Vercel deployment while Neon SDK/CLI support is unpublished.
-Generate the required packages locally or in CI, install the application,
-produce Vercel's complete output artifact, then upload that artifact. The
-deployment host receives installed/traced runtime dependencies and built
-assets; it does not need an ignored `.sdk/` directory from the Git checkout.
+```sh
+npm run bootstrap
+npm ci
+npm run typecheck
+npm test
+npm run build
+```
 
-Keep `.sdk/`, downloaded source checkouts, and `.vercel/` output gitignored.
-Enable Git-triggered deployment only when its pipeline performs the same
-bootstrap before dependency installation, or after adopting verified published
-packages.
+Bootstrap clones into `.local/toolchains/neon-pkgs`, installs its frozen
+lockfile, builds the required packages and CLI, and creates `.sdk/*.tgz`.
+Runtime workspace dependencies are resolved to the matching sibling versions;
+all required siblings are direct local dependencies of the app. Application
+installation uses its committed lockfile.
 
-## Reproducible package bootstrap
+Neon's declaration bundler produces nondeterministic source-map encodings.
+Packing removes optional source maps and their references while preserving
+runtime JavaScript and declarations. SHA512 artifact checks match both the
+toolchain manifest and the application lockfile. A mismatched package aborts
+bootstrap. `NEON_PKGS_DIR` is accepted only for a clean checkout at the exact
+pinned commit. A fresh clone with no SDK artifacts or dependencies passed the
+full build; run `npm run test:clean` to reproduce that check.
 
-Create a committed `neon-toolchain.lock.json` containing exact SDK/CLI source
-repositories and commit SHAs, Node and package-manager versions, required
-packages, artifact filenames, and expected package integrity hashes. Include
-the transitive workspace packages needed by the app and ingester. Branch names
-and mutable PR refs are discovery inputs; record the resolved commits for builds.
+For an intentional source update, update the pinned commit, run
+`node scripts/bootstrap.mjs --update-integrity`, regenerate the application
+lockfile from the new artifacts, and rerun the clean-build check. Do not use
+the integrity-update switch in routine builds.
 
-The bootstrap script must work before app dependency installation, using the
-pinned Node runtime and the source repository's pinned package manager:
+## Prebuilt Vercel deployment
 
-1. Fetch the recorded commits into `.local/toolchains/`. Accept `NEON_PKGS_DIR`
-   as an optional local override only when it matches the pinned, clean source.
-2. Install the source workspace with its frozen lockfile and build the required
-   packages plus their dependency closure.
-3. Pack distribution files into `.sdk/`, resolving internal workspace ranges
-   to the matching package versions and making all required local packages
-   available to the consuming project. Keep source-only build scripts out of
-   the packed application dependencies.
-4. Verify artifact integrity against the toolchain manifest and the consuming
-   project's dependency lockfile. Repeated builds must produce identical
-   artifacts; fail on a mismatch rather than silently changing the lockfile.
-5. Run the application's frozen dependency installation only after its local
-   tarballs exist. Use the same artifacts when bundling the Neon Function.
+```sh
+npx --yes vercel@48.10.10 link --yes --project hackernews-realtime
+node scripts/vercel-env.mjs preview
+npx --yes vercel@48.10.10 pull --yes --environment=preview
+node scripts/hydrate-build-env.mjs preview
+npx --yes vercel@48.10.10 build --yes
+npx --yes vercel@48.10.10 deploy --prebuilt --target preview
+```
 
-An intentional source update regenerates the toolchain manifest, package
-integrity values, and application lockfile together, followed by the clean
-build check. A usable published release can later replace the file dependencies.
+The environment setup script uses installed Vercel CLI 62 for its API and
+credential commands; deployment uses the pinned version above. Vercel stores
+server values as secrets that cannot be pulled back. The
+environment setup script feeds credentials via stdin and uses the Vercel API
+to store the validated public WebSocket URL as plain configuration. After
+pulling, the hydration script replaces build placeholders in the ignored
+`.vercel/.env.preview.local` with the corresponding values from `.env.local`.
+Never commit either file. Configure the public URL before
+the build; Next embeds it in browser assets. Server credentials remain runtime
+environment variables supplied by Vercel.
 
-## Application build and upload
+Add the resulting exact browser origin to `DEMO_ORIGIN` and run
+`npm run ingest:deploy` to update Realtime's allowed origins. For subsequent
+preview URLs, preserve all origins still in use in `DEMO_ADDITIONAL_ORIGINS`.
+Use an explicit deployment target: Vercel can promote a project's first default
+deployment to production even when the command omits `--prod`.
 
-After bootstrap and dependency installation:
+The shared demo is deployed at
+[hackernews-realtime.vercel.app](https://hackernews-realtime.vercel.app/).
+For a production artifact, run:
 
-1. Link/pull the intended Vercel project and environment with its CLI.
-2. Configure the matching server-only database URLs and sealing secret. Set
-   `NEXT_PUBLIC_NEON_REALTIME_URL` before building; it is embedded in browser
-   assets. Keep secrets in gitignored local/CI settings and Vercel's server
-   environment, and verify none enter client assets.
-3. Run type checking and `vercel build` for a preview artifact. Production uses
-   the matching environment and `vercel build --prod`.
-4. Upload with `vercel deploy --prebuilt`; use `--prod` only with an artifact
-   built for the production environment. Verify the selected environment's
-   server variables are available to the deployed Next.js handlers.
-5. Allow the deployed browser origin in Neon Realtime and verify SSR, sealing,
-   renewal, sorting, and two-tab updates on the deployed URL.
+```sh
+node scripts/vercel-env.mjs production
+npx --yes vercel@48.10.10 pull --yes --environment=production
+node scripts/hydrate-build-env.mjs production
+npx --yes vercel@48.10.10 build --prod --yes
+npx --yes vercel@48.10.10 deploy --prebuilt --prod
+```
 
-Use Vercel's build-output path for the full Next.js app, including server
-functions and their traced dependencies. Confirm the traced output contains
-the prerelease server packages. Deploy the ingester separately using the pinned
-Neon CLI against staging.
+Run this in a checkout whose pinned bootstrap, frozen install and checks have
+passed. The clean-build script reports its artifact directory in
+`.local/clean-build-result.json`; copy only the ignored `.env.local` and Vercel
+project link into that directory before preparing deployment configuration.
 
-## Clean-checkout acceptance
+The prebuilt artifact contains traced server dependencies and bundled Neon
+server code. The deployment does not install missing ignored SDK tarballs.
+`.vercelignore` excludes local toolchains and credentials. Browser assets were
+checked against the actual sealing secret and database password before upload.
 
-Start with no `.sdk/`, downloaded toolchain sources, or `node_modules/`. The
-committed manifest and lockfiles must be sufficient to bootstrap, verify
-identical package integrity, install, and build using the documented runtime.
-Deploy that prebuilt output and confirm both SSR and live behavior work. This
-check blocks deployment readiness while prerelease dependencies are in use.
+The Neon Function deploys separately with `npm run ingest:deploy`. The policy
+keeps schedules disabled; that wrapper explicitly enables the named shared
+project/branch only when `ENABLE_INGEST=1`.
