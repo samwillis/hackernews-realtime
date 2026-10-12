@@ -5,6 +5,8 @@ import { writeFile } from "node:fs/promises";
 import { setTimeout as delay } from "node:timers/promises";
 import { Pool } from "pg";
 import { runSession } from "../ingest/session";
+import { updateThreadView } from "../ingest/thread-watch";
+import { randomUUID } from "node:crypto";
 
 test("invalid time budgets fail before database acquisition", async () => {
   const pool = new Pool();
@@ -65,22 +67,31 @@ test(
       ).rows[0];
       assert.equal(waiting.active_owner, "first");
       assert.equal(waiting.owned, true);
-      const storyId = (
+      const storyIds: number[] = (
         await pool.query(
-          "SELECT id FROM hn_items WHERE comments BETWEEN 1 AND 100 AND NOT deleted AND NOT dead ORDER BY comments DESC LIMIT 1",
+          "SELECT id FROM hn_items WHERE comments BETWEEN 1 AND 100 AND NOT deleted AND NOT dead ORDER BY comments DESC LIMIT 4",
         )
-      ).rows[0]?.id;
-      assert.ok(storyId, "A live discussion is available");
-      await pool.query("INSERT INTO hn_threads(story_id) VALUES($1)", [
-        storyId,
-      ]);
+      ).rows.map((row) => row.id);
+      assert.equal(storyIds.length, 4, "Four live discussions are available");
+      await Promise.all(
+        storyIds.map((id) => updateThreadView(pool, id, randomUUID())),
+      );
+      const renewViews = setInterval(() => {
+        void pool
+          .query("UPDATE hn_thread_views SET requested_at=clock_timestamp()")
+          .catch(() => {});
+      }, 10000);
+      stop.signal.addEventListener("abort", () => clearInterval(renewViews), {
+        once: true,
+      });
       await waitFor(
         async () =>
           (
-            await pool.query("SELECT 1 FROM hn_comments WHERE story_id=$1", [
-              storyId,
-            ])
-          ).rowCount! > 0,
+            await pool.query(
+              "SELECT DISTINCT story_id FROM hn_comments WHERE story_id=ANY($1::integer[])",
+              [storyIds],
+            )
+          ).rowCount === 4,
       );
       const started = Date.now();
       const second = runSession(pool, { ...options, owner: "second" });
@@ -92,20 +103,23 @@ test(
           (row) => row.owner === "second" && row.state === "healthy",
         ),
       );
+      await waitFor(
+        async () =>
+          (
+            await pool.query(
+              "SELECT 1 FROM hn_threads WHERE story_id=ANY($1::integer[]) AND state='healthy'",
+              [storyIds],
+            )
+          ).rowCount === 4,
+      );
       assert.equal(
         (
-          await pool.query("SELECT state FROM hn_threads WHERE story_id=$1", [
-            storyId,
-          ])
-        ).rows[0].state,
-        "healthy",
-      );
-      assert.ok(
-        (
-          await pool.query("SELECT 1 FROM hn_comments WHERE story_id=$1", [
-            storyId,
-          ])
-        ).rowCount! > 0,
+          await pool.query(
+            "SELECT DISTINCT story_id FROM hn_comments WHERE story_id=ANY($1::integer[])",
+            [storyIds],
+          )
+        ).rowCount,
+        4,
       );
       const events = (
         await pool.query(
@@ -137,6 +151,7 @@ test(
               "isolated staging schema, real HN source, local workers",
             delayedStandbyToHealthyMs: Date.now() - started,
             handoffToPromotionMs: promoted - handedOff,
+            simultaneousDiscussions: storyIds.length,
           },
           null,
           2,

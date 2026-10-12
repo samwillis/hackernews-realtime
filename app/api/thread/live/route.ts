@@ -1,5 +1,6 @@
 import { parseStoryId } from "@/lib/comments";
 import { sealStory, sealComments, storyQuery } from "@/lib/queries";
+import { ensureThreadLoaded } from "@/lib/thread-load";
 export const dynamic = "force-dynamic";
 export async function GET(request: Request) {
   let id: number;
@@ -11,6 +12,8 @@ export async function GET(request: Request) {
   try {
     if (!(await storyQuery(id)).length)
       return Response.json({ error: "Story not found" }, { status: 404 });
+    if (new URL(request.url).searchParams.get("load") === "1")
+      await ensureThreadLoaded(id);
     const [story, comments] = await Promise.all([
       sealStory(id),
       sealComments(id),

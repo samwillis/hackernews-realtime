@@ -60,11 +60,32 @@ export function useLiveControls(
   useEffect(() => {
     if (connection === "fixture" || healthUrl === "/api/health") return;
     let disposed = false;
+    let viewer = crypto.randomUUID();
+    const watchUrl = () => `${healthUrl}&viewer=${viewer}`;
+    const release = () => {
+      void fetch(`${watchUrl()}&release=1`, {
+        method: healthMethod,
+        cache: "no-store",
+        keepalive: true,
+      }).catch(() => {});
+    };
+    const leave = () => {
+      disposed = true;
+      release();
+    };
+    const restore = () => {
+      if (!disposed) return;
+      disposed = false;
+      viewer = crypto.randomUUID();
+      void refresh();
+    };
     const refresh = async () => {
+      if (disposed) return;
       try {
-        const response = await fetch(healthUrl, {
+        const response = await fetch(watchUrl(), {
           method: healthMethod,
           cache: "no-store",
+          signal: AbortSignal.timeout(6000),
         });
         const value = await response.json();
         if (!response.ok || !value.state)
@@ -81,11 +102,21 @@ export function useLiveControls(
           setHealth({ state: "degraded", checkedAt: null, committedAt: null });
       }
     };
+    const visible = () => {
+      if (document.visibilityState === "visible") void refresh();
+    };
     void refresh();
     const check = setInterval(() => void refresh(), 10000);
+    window.addEventListener("pagehide", leave);
+    window.addEventListener("pageshow", restore);
+    document.addEventListener("visibilitychange", visible);
     return () => {
       disposed = true;
       clearInterval(check);
+      window.removeEventListener("pagehide", leave);
+      window.removeEventListener("pageshow", restore);
+      document.removeEventListener("visibilitychange", visible);
+      release();
     };
   }, [connection === "fixture", healthUrl, healthMethod, session]);
   return {

@@ -140,7 +140,7 @@ export function Discussion({
   const limited =
     controls.health &&
     "truncated" in controls.health &&
-    controls.health.truncated;
+    controls.health.truncated === true;
   return (
     <main className="hn-page">
       <Header controls={controls} connection={connection} error={error} />
@@ -246,11 +246,9 @@ export function Discussion({
         <p className="discussion-empty" role="status">
           {story.comments === 0
             ? "No comments yet."
-            : controls.health?.state === "busy"
-              ? "Live updates are busy. This thread will load when a slot is available."
-              : controls.health?.state === "degraded"
-                ? "Comments are temporarily unavailable."
-                : "Loading comments…"}{" "}
+            : controls.health?.state === "degraded"
+              ? "Comments are temporarily unavailable."
+              : "Loading comments…"}{" "}
           <a href={itemLink(id)}>View on Hacker News</a>
         </p>
       )}
@@ -260,11 +258,9 @@ export function Discussion({
           <a href={itemLink(id)}>Read the full discussion on Hacker News</a>.
         </p>
       )}
-      {controls.health?.state === "busy" && list.rows.length > 0 && (
-        <p className="thread-limit">
-          Live updates for this thread are busy. Showing cached comments;
-          retrying automatically. <a href={itemLink(id)}>View on Hacker News</a>
-          .
+      {controls.health?.state === "starting" && list.rows.length > 0 && (
+        <p className="thread-limit" role="status">
+          Loading remaining comments…
         </p>
       )}
       {connection === "fixture" && (

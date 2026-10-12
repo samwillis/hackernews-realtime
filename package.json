@@ -17,7 +17,7 @@
     "db:setup": "node --env-file-if-exists=.env.local --import tsx scripts/setup.ts",
     "ingest": "node --env-file-if-exists=.env.local --import tsx scripts/ingest.ts",
     "ingest:deploy": "node --env-file=.env.local scripts/deploy-ingest.mjs",
-    "test:db": "RUN_DB_TESTS=1 node --env-file=.env.local --import tsx --test tests/database.test.ts",
+    "test:db": "RUN_DB_TESTS=1 node --env-file=.env.local --import tsx --test tests/*database.test.ts",
     "test:handoff": "RUN_SOURCE_TESTS=1 node --env-file=.env.local --import tsx --test tests/session.test.ts",
     "test:recovery": "node --env-file=.env.local --import tsx scripts/recovery-probe.ts",
     "test:clean": "node scripts/clean-build.mjs",

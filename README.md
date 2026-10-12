@@ -90,18 +90,27 @@ an active ingester.
 
 Click a story's comment count to open `/item?id=…`. Story metadata and nested
 comments use separate fixed sealed queries over the same Realtime client.
-The page renews its watch every ten seconds; the shared ingester discovers
-watches every five seconds and uses its existing Firebase connection. Both
-roles warm the watched trees before handoff. Comments publish in the same
-fenced transaction as feed data. Text is rendered from a small HTML allowlist.
-Deleted/dead comments remain placeholders, and branches can be collapsed.
+Uncached pages fetch the story and up to 20 top-level comments directly from HN
+in the server page loader and navigation preparation endpoint. A short database
+claim shares concurrent cold loads; seeds are committed before sealing live
+queries, so SSR and the first live reset agree. No database connection is held
+while contacting HN, and a newer worker publication takes precedence.
 
-The staging demo bounds ingestion to **three distinct watched stories** and
-**up to 500 comments per story**. Watches expire 90 seconds after the last
-renewal. A fourth discussion shows cached data with an HN-updates-busy indicator
-and retries automatically. Large discussions link to the full original thread.
-Prefetching a story link does not register a watch. These limits are explicit in
-`lib/comments.ts`; raise them only with ingestion/load measurements.
+Each mounted page renews its own viewer watch every ten seconds and releases it
+on navigation or closing. The ingester discovers watches every second on its
+shared Firebase connection. Multiple viewers share one thread subscription;
+there is no three-thread gate. Abandoned watches expire after 30 seconds.
+Prefetching seeds the cache but does not register an ongoing ingestion watch.
+
+Remaining comments appear progressively. Incomplete snapshots only insert
+missing comments, preserving cached descendants and newer values; reconciled
+snapshots update and remove rows authoritatively. Worker writes remain in the
+same fenced transaction as feed data. Handoff readiness follows the feed, so a
+newly opened discussion cannot block the entire ingester's transfer. Text uses
+a small HTML allowlist, deleted/dead parents remain placeholders, and branches
+can be collapsed. The demo displays **up to 500 comments per story**, with a
+link to the full original discussion for larger threads. Broader concurrent
+viewer load testing remains outstanding.
 
 ## Event timeline
 

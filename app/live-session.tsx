@@ -76,7 +76,7 @@ class Session {
     if (existing) return existing as Promise<T>;
     const request = fetch(url, {
       cache: "no-store",
-      signal: AbortSignal.timeout(6000),
+      signal: AbortSignal.timeout(url.includes("load=1") ? 10000 : 6000),
     }).then(async (response) => {
       if (!response.ok) throw new Error("Unable to prepare live updates");
       return response.json() as Promise<T>;
@@ -108,7 +108,7 @@ class Session {
         }
         type Queries = { story: SealedStory; comments: SealedComments };
         const renew = () => this.json<Queries>(route.api);
-        const query = await renew();
+        const query = await this.json<Queries>(`${route.api}&load=1`);
         await Promise.all([
           this.cache
             .get<Story>(

@@ -8,21 +8,8 @@ import {
 } from "@firebase/database";
 import { FEED_SIZE, type Feed } from "../lib/types";
 import { HnThread, type ThreadSnapshot } from "./threads";
-export interface HnItem {
-  id: number;
-  type?: string;
-  title?: string;
-  url?: string;
-  by?: string;
-  time?: number;
-  score?: number;
-  descendants?: number;
-  dead?: boolean;
-  deleted?: boolean;
-  kids?: number[];
-  parent?: number;
-  text?: string;
-}
+import { readHn, mapLimit, type HnItem } from "./hn-api";
+export { readHn, mapLimit, type HnItem } from "./hn-api";
 export interface SourceSnapshot {
   feeds: Record<Feed, number[]>;
   items: Map<number, HnItem>;
@@ -32,36 +19,6 @@ export interface SourceSnapshot {
   itemReceipts?: Map<number, number>;
   feedReceipts?: Record<Feed, number>;
   threads?: ThreadSnapshot[];
-}
-const API = "https://hacker-news.firebaseio.com/v0";
-export async function readHn<T>(
-  path: string,
-  signal?: AbortSignal,
-): Promise<T> {
-  const response = await fetch(`${API}/${path}.json`, {
-    signal: signal
-      ? AbortSignal.any([signal, AbortSignal.timeout(15000)])
-      : AbortSignal.timeout(15000),
-  });
-  if (!response.ok) throw new Error(`HN source returned ${response.status}`);
-  return response.json() as Promise<T>;
-}
-export async function mapLimit<T, U>(
-  values: T[],
-  limit: number,
-  fn: (value: T) => Promise<U>,
-): Promise<U[]> {
-  const result: U[] = new Array(values.length);
-  let cursor = 0;
-  await Promise.all(
-    Array.from({ length: Math.min(limit, values.length) }, async () => {
-      while (cursor < values.length) {
-        const index = cursor++;
-        result[index] = await fn(values[index]);
-      }
-    }),
-  );
-  return result;
 }
 const normalizeItem = (id: number, item: HnItem | null): HnItem =>
   item ? { ...item, id } : { id, deleted: true };
@@ -193,9 +150,9 @@ export class HnSource {
     );
   }
   get prepared() {
-    return (
-      this.ready && [...this.threads.values()].every((thread) => thread.ready)
-    );
+    // Cold discussions must not delay handoff of the shared feed. Partial
+    // thread snapshots only insert missing rows until reconciliation completes.
+    return this.ready;
   }
   watchThreads(ids: number[]) {
     if (this.closed) return;

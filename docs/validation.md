@@ -79,11 +79,11 @@ Realtime connection and upstream health controls are inside the orange header.
   widths both measured 390px, RT measured 22×22px, the header controls wrapped,
   and nested replies remained readable. Keyboard Space toggled pause.
 
-The demo currently watches three distinct discussions at once, with up to 500
-comments per thread. Watches expire 90 seconds after their last renewal. Busy
-threads retry, showing cached rows and an explicit upstream-busy indicator.
-Large discussions link to the complete original HN thread. These bounds have
-functional coverage; broader discussion-load measurement remains outstanding.
+The earlier three-discussion gate has been removed. Open pages use independent
+viewer leases, released on departure and expired after 30 seconds without renewal.
+The 500-comment display bound and full-discussion HN link remain. The current
+page-load and concurrent-viewer checks are recorded below; broader traffic/load
+measurement remains outstanding.
 The earlier launch checks below continue to apply, including deployed reduced
 motion and injected failures.
 
@@ -220,3 +220,39 @@ before committing the route, reusing those handles and their authoritative rows.
 
 The staging demo can be explored now. These checks must pass before calling it
 launch ready under the plan's acceptance targets.
+
+## Loading discussions when opened — 2026-10-12
+
+Removed the global three-thread gate. The server page and navigation preparation
+seed uncached comments before subscribing, and mounted pages own separate viewer
+leases. Watches release on navigation/pagehide, renew on becoming visible, and
+expire after 30 seconds if renewals stop. Partial worker snapshots insert missing
+rows without erasing cached descendants or reverting their values; complete
+snapshots reconcile the tree. Cold discussions no longer delay feed handoff.
+
+- All 21 unit checks, four isolated database integration checks, typecheck, and
+  the pinned production build passed. Database checks cover five simultaneous
+  threads, duplicate viewers, release/renewal reordering, expiry, shared cold
+  loading, failed/replaced load ownership, and worker-versus-seed races.
+- A real-source isolated handoff with four watched discussions passed. Handoff
+  to promotion measured 156ms; all four threads reached healthy status.
+- Two uncached production SSR requests returned eight and twenty comments in
+  1,193ms and 1,065ms respectively, before JavaScript. Neither contained a slot
+  message. These are two samples, not latency percentiles.
+- Four distinct production browser discussions all became healthy, with 50,
+  56, 269 and 259 cached comments. First comments appeared before the remaining
+  rows; no thread-watch/source/session failure was recorded during the check.
+- A second viewer kept the same discussion live after the first navigated away;
+  the database then showed one active viewer and one released viewer. Temporary
+  test stories had no active watches after their tabs closed.
+- The connection stayed live through top/thread/top/thread navigation. Highlight
+  settings and the event timeline persisted. A 390px mobile viewport had 390px
+  document and scroll widths, a square 22px RT logo, and a live connection.
+- The deployed static assets were scanned against the configured database URLs,
+  password and server Realtime secret: zero matches.
+
+Production deployment: https://hackernews-realtime-logjinp2p-samwillis-projects.vercel.app
+Stable URL: https://hackernews-realtime.vercel.app/
+Desktop proof: `docs/comment-loading.png`; mobile proof: `docs/comment-loading-mobile.png`.
+The 500-comment per-thread bound remains; broader concurrent traffic testing
+is still outstanding.

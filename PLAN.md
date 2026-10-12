@@ -58,9 +58,11 @@ and [Function runtime limits](https://neon.com/docs/compute/functions/reference/
   connection does not hide a stalled ingester.
 - Open story comment counts in local live nested discussions. Reply/comment,
   profile, vote and Submit actions stay on real HN. Remove login from the header.
-- Watch up to three recently viewed discussions on the shared Firebase connection,
-  mirroring up to 500 comments per thread. Renew watches from the mounted browser
-  only; expire after 90 seconds. Show busy/stale/truncated states and original links.
+- Fetch uncached first comments in the server route loader and navigation preparation;
+  seed the shared cache before subscribing, then render remaining comments progressively.
+- Watch every open discussion on the shared Firebase connection, up to 500 comments
+  per thread. Use independent viewer leases, release on departure, and expire abandoned
+  watches after 30 seconds. Show loading/stale/truncated states and original links.
 - Pulse only changed numbers and edited comment text. Expand arriving story/comment
   rows, animate movement with stable IDs, and suppress motion on resume or when
   reduced motion is requested. Allow comment branches to collapse.
@@ -134,11 +136,17 @@ publishing their feed entries so the UI does not briefly show incomplete rows.
 Update source columns only when they differ, avoiding unnecessary writes and
 Realtime batches. Preserve IDs as React keys so changed ranks retain row identity.
 
-The discussion tables are `hn_threads` (watch expiry, health and truncation) and
-`hn_comments` (composite story/item key, parent, deterministic path/depth,
-text and deletion/dead state). Self-post text is stored on `hn_items.body`.
-Watched comments are written conditionally and atomically under the same lease.
-Thread queries order by path then item ID, including both composite key columns.
+The discussion tables are `hn_threads` (cache load ownership, health and truncation),
+`hn_thread_views` (per-page viewer leases and release tombstones) and `hn_comments`
+(composite story/item key, parent, deterministic path/depth, text and deletion/dead
+state). Self-post text is stored on `hn_items.body`. Cold page loads claim a short
+per-thread lease without holding a connection over HN requests, then seed initial
+comments only if the worker has not populated the cache. A row lock serializes
+seeding with worker publication. Incomplete snapshots only add missing rows;
+complete worker snapshots conditionally update and delete in the globally fenced
+transaction. Thread queries order by path then item ID, including both composite
+key columns. Feed readiness permits handoff independently of cold discussions;
+cached rows survive the successor's partial tree until reconciliation completes.
 
 ## Ingestion design
 

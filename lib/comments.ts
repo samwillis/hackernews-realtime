@@ -1,6 +1,5 @@
 export const THREAD_LIMIT = 500;
-export const WATCH_LIMIT = 3;
-export const WATCH_SECONDS = 90;
+export const WATCH_SECONDS = 30;
 export interface Comment {
   story_id: number;
   item_id: number;
@@ -15,7 +14,7 @@ export interface Comment {
   committed_at: string;
 }
 export interface ThreadHealth {
-  state: "starting" | "healthy" | "reconnecting" | "degraded" | "busy";
+  state: "starting" | "healthy" | "reconnecting" | "degraded";
   checkedAt: string | null;
   committedAt: string | null;
   truncated?: boolean;

@@ -4,7 +4,7 @@ import type { Pool } from "pg";
 import { HnSource } from "./source";
 import { Leases, LostLease } from "./lease";
 import { publish } from "./store";
-import { WATCH_LIMIT, WATCH_SECONDS } from "../lib/comments";
+import { watchedThreads } from "./thread-watch";
 export interface SessionOptions {
   budgetMs?: number;
   tenureMs?: number;
@@ -46,6 +46,7 @@ export async function runSession(pool: Pool, options: SessionOptions = {}) {
   let reconciliation: Promise<void> | undefined;
   let watchRefresh: Promise<void> | undefined;
   let watchesCheckedAt = 0;
+  let viewsPrunedAt = 0;
   let standbyMarkedReady = false;
   let waitingForHandoff = false;
   const event = async (kind: string, details: Record<string, unknown> = {}) => {
@@ -142,11 +143,13 @@ export async function runSession(pool: Pool, options: SessionOptions = {}) {
   process.once("SIGINT", shutdown);
   process.once("SIGTERM", shutdown);
   const refreshWatches = async () => {
-    const { rows } = await pool.query(
-      "SELECT story_id FROM hn_threads WHERE requested_at>clock_timestamp()-$1::integer*interval '1 second' ORDER BY story_id LIMIT $2",
-      [WATCH_SECONDS, WATCH_LIMIT],
-    );
-    source.watchThreads(rows.map((row) => row.story_id));
+    source.watchThreads(await watchedThreads(pool));
+    if (Date.now() - viewsPrunedAt > 60000) {
+      await pool.query(
+        "DELETE FROM hn_thread_views WHERE requested_at<clock_timestamp()-interval '5 minutes'",
+      );
+      viewsPrunedAt = Date.now();
+    }
   };
   try {
     await event("started", { role, budgetMs, tenureMs, overlapMs });
@@ -154,7 +157,7 @@ export async function runSession(pool: Pool, options: SessionOptions = {}) {
     await refreshWatches();
     await renew();
     while (!stopped && !signal.aborted && Date.now() < deadline - 5000) {
-      if (Date.now() - watchesCheckedAt >= 5000 && !watchRefresh) {
+      if (Date.now() - watchesCheckedAt >= 1000 && !watchRefresh) {
         watchesCheckedAt = Date.now();
         watchRefresh = refreshWatches()
           .catch(async () => {

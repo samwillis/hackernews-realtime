@@ -7,6 +7,7 @@ import {
 } from "@/lib/queries";
 import { parseStoryId, sortComments } from "@/lib/comments";
 import { CommentsClient } from "./comments-client";
+import { ensureThreadLoaded } from "@/lib/thread-load";
 export const dynamic = "force-dynamic";
 export default async function Page({
   searchParams,
@@ -22,6 +23,7 @@ export default async function Page({
   }
   const stories = await storyQuery(id);
   if (!stories.length) notFound();
+  await ensureThreadLoaded(id);
   const [comments, storyQuerySealed, commentsQuerySealed] = await Promise.all([
     commentQuery(id),
     sealStory(id),
