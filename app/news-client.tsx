@@ -1,10 +1,10 @@
 "use client";
 import { useCallback } from "react";
-import Link from "next/link";
-import { useLiveQuery } from "@neon/realtime-react";
+import { LiveLink as Link } from "./live-link";
+import { useCachedLiveQuery, useSession } from "./live-session";
 import type { SealedFeed } from "@/lib/queries";
 import { sortStories, type Feed, type Story } from "@/lib/types";
-import { Header, LiveProvider, useLiveControls } from "./live-ui";
+import { Header, useLiveControls } from "./live-ui";
 import { StoryRow } from "./story-row";
 import { useLiveList } from "./use-live-list";
 import { EventTimeline } from "./event-timeline";
@@ -22,28 +22,25 @@ type Props = {
 export function NewsClient(props: Props) {
   if (!props.query)
     return <News {...props} rows={props.initialRows} connection="fixture" />;
-  return (
-    <LiveProvider>
-      <LiveNews {...props} query={props.query} />
-    </LiveProvider>
-  );
+  return <LiveNews {...props} query={props.query} />;
 }
 function LiveNews(props: Props & { query: SealedFeed }) {
+  const session = useSession();
   const refreshQuery = useCallback(async () => {
-    const response = await fetch(
+    return session.json<SealedFeed>(
       `/api/feed/live?feed=${props.feed}&page=${props.page}`,
-      { cache: "no-store" },
     );
-    if (!response.ok) throw new Error("Unable to renew the live connection");
-    return response.json() as Promise<SealedFeed>;
-  }, [props.feed, props.page]);
-  const { data, status, error } = useLiveQuery(props.query, {
-    initialData: props.initialRows,
+  }, [session, props.feed, props.page]);
+  const { data, status, error } = useCachedLiveQuery(
+    `feed:${props.feed}:${props.page}`,
+    props.query,
+    props.initialRows,
     refreshQuery,
-  });
+  );
   return (
     <News
       {...props}
+      initialRows={data ? [...data] : props.initialRows}
       rows={data ?? props.initialRows}
       connection={status}
       error={error?.message}
@@ -106,12 +103,12 @@ export function News({
           More
         </Link>
       )}
-      <EventTimeline
-        paused={controls.paused}
-        fixtureEvents={
-          connection === "fixture" ? (fixtureEvents ?? emptyEvents) : undefined
-        }
-      />
+      {connection === "fixture" && (
+        <EventTimeline
+          paused={controls.paused}
+          fixtureEvents={fixtureEvents ?? emptyEvents}
+        />
+      )}
     </main>
   );
 }

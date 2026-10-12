@@ -1,12 +1,12 @@
 "use client";
 import { useCallback, useMemo, useState } from "react";
-import { useLiveQuery } from "@neon/realtime-react";
+import { useCachedLiveQuery, useSession } from "../live-session";
 import type { SealedComments, SealedStory } from "@/lib/queries";
 import { sortStories, type Story } from "@/lib/types";
 import { sortComments, THREAD_LIMIT, type Comment } from "@/lib/comments";
 import { commentContent } from "@/lib/comment-content";
 import { age, HN, itemLink, userLink } from "@/lib/links";
-import { Header, LiveProvider, useLiveControls } from "../live-ui";
+import { Header, useLiveControls } from "../live-ui";
 import { StoryRow } from "../story-row";
 import { useLiveList } from "../use-live-list";
 import { EventTimeline } from "../event-timeline";
@@ -32,34 +32,31 @@ export function CommentsClient(props: Props) {
         connection="fixture"
       />
     );
-  return (
-    <LiveProvider>
-      <LiveDiscussion {...props} queries={props.queries} />
-    </LiveProvider>
-  );
+  return <LiveDiscussion {...props} queries={props.queries} />;
 }
 function LiveDiscussion(props: Props & { queries: Queries }) {
   const id = props.initialStories[0].item_id;
+  const session = useSession();
   const renew = useCallback(async () => {
-    const response = await fetch(`/api/thread/live?id=${id}`, {
-      cache: "no-store",
-    });
-    if (!response.ok) throw new Error("Unable to renew the discussion");
-    return response.json() as Promise<Queries>;
-  }, [id]);
+    return session.json<Queries>(`/api/thread/live?id=${id}`);
+  }, [id, session]);
   const refreshStory = useCallback(async () => (await renew()).story, [renew]);
   const refreshComments = useCallback(
     async () => (await renew()).comments,
     [renew],
   );
-  const story = useLiveQuery(props.queries.story, {
-    initialData: props.initialStories,
-    refreshQuery: refreshStory,
-  });
-  const comments = useLiveQuery(props.queries.comments, {
-    initialData: props.initialComments,
-    refreshQuery: refreshComments,
-  });
+  const story = useCachedLiveQuery(
+    `story:${id}`,
+    props.queries.story,
+    props.initialStories,
+    refreshStory,
+  );
+  const comments = useCachedLiveQuery(
+    `comments:${id}`,
+    props.queries.comments,
+    props.initialComments,
+    refreshComments,
+  );
   const connection = [story.status, comments.status].includes("error")
     ? "error"
     : [story.status, comments.status].includes("stale")
@@ -70,6 +67,12 @@ function LiveDiscussion(props: Props & { queries: Queries }) {
   return (
     <Discussion
       {...props}
+      initialStories={
+        story.data?.length ? [...story.data] : props.initialStories
+      }
+      initialComments={
+        comments.data ? [...comments.data] : props.initialComments
+      }
       stories={story.data ?? props.initialStories}
       comments={comments.data ?? props.initialComments}
       connection={connection}
@@ -257,12 +260,19 @@ export function Discussion({
           <a href={itemLink(id)}>Read the full discussion on Hacker News</a>.
         </p>
       )}
-      <EventTimeline
-        paused={controls.paused}
-        fixtureEvents={
-          connection === "fixture" ? (fixtureEvents ?? emptyEvents) : undefined
-        }
-      />
+      {controls.health?.state === "busy" && list.rows.length > 0 && (
+        <p className="thread-limit">
+          Live updates for this thread are busy. Showing cached comments;
+          retrying automatically. <a href={itemLink(id)}>View on Hacker News</a>
+          .
+        </p>
+      )}
+      {connection === "fixture" && (
+        <EventTimeline
+          paused={controls.paused}
+          fixtureEvents={fixtureEvents ?? emptyEvents}
+        />
+      )}
     </main>
   );
 }

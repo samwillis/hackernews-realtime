@@ -1,6 +1,6 @@
 "use client";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import Link from "next/link";
+import { LiveLink as Link } from "./live-link";
 import { decodeTitle } from "@/lib/links";
 import { useLiveQuery } from "@neon/realtime-react";
 import type { SealedEvents } from "@/lib/queries";
@@ -123,8 +123,9 @@ function useVisibleItems() {
       collect();
       sample();
     });
-    const page = document.querySelector(".hn-page");
-    if (page) observer.observe(page, { childList: true, subtree: true });
+    // The footer persists while Next replaces the page beneath the shared layout.
+    const content = document.querySelector("#route-content");
+    if (content) observer.observe(content, { childList: true, subtree: true });
     window.addEventListener(VISIBILITY_EVENT, transitions);
     window.addEventListener("scroll", sample, { passive: true });
     window.addEventListener("resize", sample);

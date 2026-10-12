@@ -583,3 +583,7 @@ nav .selected {
     transition: none;
   }
 }
+a[aria-busy="true"] {
+  cursor: progress;
+  opacity: 0.65;
+}

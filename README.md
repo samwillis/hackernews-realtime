@@ -126,6 +126,28 @@ by this demo's bounded feeds and watched discussions. Comment body details are
 short text excerpts. Apply migration 0003 with `npm run db:setup`; the existing
 native ingester picks it up without redeployment.
 
+## Navigation and server rendering
+
+Next App Router renders initial feed rows, story metadata and comments on the
+server. The async page components query Postgres and seal their fixed live
+queries; the resulting HTML already contains the content before JavaScript runs.
+Client navigation fetches a server component payload for the destination.
+
+One Realtime client in the root layout multiplexes all page and timeline queries.
+The connection indicator follows its actual transport lifecycle, with query
+failures and reconnects still reported. Pause, highlighting, source health and
+the event timeline persist when changing pages.
+
+Internal links prefetch the Next route and prepare its live subscriptions on
+hover/focus or click. Navigation waits for their first authoritative live snapshot;
+the destination consumes those same handles and rows. Speculative loading does
+not register a thread ingestion watch. Slow or failed preparation falls back to
+the server-rendered page so it can open and report connection problems. Warm
+queries support back/forward navigation and renew their short-lived capabilities
+in memory. Inactive handles expire after 60 seconds, with at most eight retained;
+active page queries are not evicted. A later click or browser back cancels an
+older pending navigation.
+
 ## Checks
 
 ```sh

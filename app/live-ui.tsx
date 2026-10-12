@@ -1,17 +1,10 @@
 "use client";
-import { useEffect, useState, type ReactNode } from "react";
-import Link from "next/link";
-import { createRealtimeClient } from "@neon/realtime/client";
-import { RealtimeProvider } from "@neon/realtime-react";
+import { useEffect, useState } from "react";
+import { LiveLink as Link } from "./live-link";
+import { useConnection, useSession, useSettings } from "./live-session";
 import { HN } from "@/lib/links";
 import type { Feed, SourceHealth } from "@/lib/types";
 import type { ThreadHealth } from "@/lib/comments";
-export function LiveProvider({ children }: { children: ReactNode }) {
-  const [client] = useState(() =>
-    createRealtimeClient({ url: process.env.NEXT_PUBLIC_NEON_REALTIME_URL! }),
-  );
-  return <RealtimeProvider client={client}>{children}</RealtimeProvider>;
-}
 export function Header({
   feed,
   controls,
@@ -23,6 +16,7 @@ export function Header({
   connection: string;
   error?: string;
 }) {
+  const sharedConnection = useConnection(connection);
   return (
     <header className="hn-header">
       <Link href="/" className="logo" aria-label="Hacker Realtime home">
@@ -44,7 +38,11 @@ export function Header({
           <a href={`${HN}/submit`}>submit</a>
         </nav>
       </div>
-      <LiveControls controls={controls} connection={connection} error={error} />
+      <LiveControls
+        controls={controls}
+        connection={sharedConnection}
+        error={error}
+      />
     </header>
   );
 }
@@ -54,15 +52,13 @@ export function useLiveControls(
   healthUrl = "/api/health",
   healthMethod = "GET",
 ) {
-  const [paused, setPaused] = useState(false);
-  const [highlight, setHighlight] = useState(true);
-  const [now, setNow] = useState(initialNow);
+  const settings = useSettings();
+  const session = useSession();
   const [health, setHealth] = useState<SourceHealth | ThreadHealth | null>(
-    null,
+    () => session.threadHealth.get(healthUrl) ?? null,
   );
   useEffect(() => {
-    const tick = setInterval(() => setNow(Date.now()), 10000);
-    if (connection === "fixture") return () => clearInterval(tick);
+    if (connection === "fixture" || healthUrl === "/api/health") return;
     let disposed = false;
     const refresh = async () => {
       try {
@@ -73,6 +69,12 @@ export function useLiveControls(
         const value = await response.json();
         if (!response.ok || !value.state)
           throw new Error("Source health unavailable");
+        session.threadHealth.set(healthUrl, value);
+        // Health caching does not keep the ingestion watch alive after leaving.
+        if (session.threadHealth.size > 8)
+          session.threadHealth.delete(
+            session.threadHealth.keys().next().value!,
+          );
         if (!disposed) setHealth(value);
       } catch {
         if (!disposed)
@@ -83,11 +85,15 @@ export function useLiveControls(
     const check = setInterval(() => void refresh(), 10000);
     return () => {
       disposed = true;
-      clearInterval(tick);
       clearInterval(check);
     };
-  }, [connection === "fixture", healthUrl, healthMethod]);
-  return { paused, setPaused, highlight, setHighlight, now, health };
+  }, [connection === "fixture", healthUrl, healthMethod, session]);
+  return {
+    ...settings,
+    now: settings.now || initialNow,
+    health: healthUrl === "/api/health" ? settings.health : health,
+    sourceHealth: settings.health,
+  };
 }
 export type Controls = ReturnType<typeof useLiveControls>;
 export function LiveControls({
@@ -99,7 +105,14 @@ export function LiveControls({
   connection: string;
   error?: string;
 }) {
-  const { paused, setPaused, highlight, setHighlight, now, health } = controls;
+  const {
+    paused,
+    setPaused,
+    highlight,
+    setHighlight,
+    now,
+    sourceHealth: health,
+  } = controls;
   const fresh =
     health?.checkedAt &&
     now - Date.parse(health.checkedAt) < 30000 &&
@@ -151,13 +164,11 @@ export function LiveControls({
               ? "checking source…"
               : fresh
                 ? "HN connected"
-                : health.state === "busy"
-                  ? "HN updates busy"
-                  : health.state === "starting"
-                    ? "HN loading…"
-                    : health.state === "reconnecting"
-                      ? "HN reconnecting…"
-                      : "HN data may be stale"}
+                : health.state === "starting"
+                  ? "HN loading…"
+                  : health.state === "reconnecting"
+                    ? "HN reconnecting…"
+                    : "HN data may be stale"}
           </span>
         </>
       )}

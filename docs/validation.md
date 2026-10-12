@@ -176,6 +176,32 @@ Ignored raw evidence lives in `.local/clean-build-result.json`,
 `.local/final-validation.json`. Reproduce the probes with the commands in the README;
 the probes remove their isolated test schemas.
 
+## Persistent connection and navigation
+
+The navigation follow-up is deployed as
+`hackernews-realtime-5id3bvty8-samwillis-projects.vercel.app`, with the same stable
+production alias. A single root-layout client now owns page subscriptions and
+the persistent event timeline. Internal navigation prepares destination queries
+before committing the route, reusing those handles and their authoritative rows.
+
+- TypeScript, 19 unit tests and the pinned Vercel production build passed.
+  New tests cover baseline readiness, handle reuse, warm back navigation,
+  bounded idle cleanup, timeouts and terminal errors, capability renewal,
+  invalid-renewal failure reporting, query identity and rapid navigation.
+- The deployed top → new → top → discussion → browser-back flow kept the
+  connection live. Pause and highlighting survived page changes; the single
+  footer retained its timeline. The real discussion displayed 198 comments.
+  Browser logs contained no warnings or errors during these checks.
+- Local pagination showed rank 31 on page two and stayed live on browser back.
+  Rapid top/new clicks respected the latest choice. At 390×844, feed switching
+  stayed live, one footer remained, and document width stayed 390px.
+- Direct HTTP responses from production contained 30 feed rows and rendered
+  discussion comments before JavaScript. Both pages remain dynamic Next App
+  Router server-rendered routes; browser subscriptions start during hydration
+  or destination preparation.
+- All 26 public production assets passed the credential/sealing-secret scan.
+  The proof image is [navigation.png](navigation.png).
+
 ## Launch checks still required
 
 - Extend correlated latency measurements to inserts, removals and rank-only

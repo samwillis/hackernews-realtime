@@ -1,4 +1,4 @@
-import Link from "next/link";
+import { LiveLink as Link } from "./live-link";
 import type { Story } from "@/lib/types";
 import type { RowChange } from "@/lib/changes";
 import { discussionLink } from "@/lib/comments";
