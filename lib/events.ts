@@ -10,11 +10,14 @@ export type HnEvent = {
   details: string;
   occurred_at: number;
 };
-export function eventBuckets(events: readonly HnEvent[], now: number) {
+export function eventBuckets(
+  events: readonly HnEvent[],
+  now: number,
+  windowMs = TIMELINE_MS,
+) {
   const buckets = new Map<number, HnEvent[]>();
   for (const event of events) {
-    if (event.occurred_at < now - TIMELINE_MS || event.occurred_at > now)
-      continue;
+    if (event.occurred_at < now - windowMs || event.occurred_at > now) continue;
     const second = Math.floor(event.occurred_at / 1000) * 1000;
     const bucket = buckets.get(second) ?? [];
     bucket.push(event);

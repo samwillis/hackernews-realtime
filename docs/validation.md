@@ -256,3 +256,21 @@ Stable URL: https://hackernews-realtime.vercel.app/
 Desktop proof: `docs/comment-loading.png`; mobile proof: `docs/comment-loading-mobile.png`.
 The 500-comment per-thread bound remains; broader concurrent traffic testing
 is still outstanding.
+
+## Mobile timeline window — 2026-10-12
+
+The footer now uses a 60-second window at the existing mobile breakpoint
+(750px and below), and retains 120 seconds above it. Event filtering, counts,
+marker positions, tick labels and accessible range text share the same window.
+The media query reacts to resizing without replacing the live subscription.
+
+Typecheck, all 21 unit checks, the production build, and the static secret scan
+passed. The existing event boundary check now also covers a 60-second window.
+On the deployed site, a paused desktop timeline showed 615 events over two
+minutes. At 390px it showed 139 events over 60 seconds, with ticks at −60s,
+−45s, −30s, −15s and now, and no horizontal overflow. Restoring 993px recovered
+the original 615 events and two-minute labels. Live updates were resumed and
+the viewport override was reset after verification.
+
+Production: https://hackernews-realtime-1ogz260ho-samwillis-projects.vercel.app
+Mobile screenshot: `docs/mobile-timeline-60s.png`.

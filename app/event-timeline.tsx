@@ -151,11 +151,22 @@ function Timeline({
 }) {
   const [applied, setApplied] = useState(events);
   const [now, setNow] = useState(0);
+  const [windowMs, setWindowMs] = useState(TIMELINE_MS);
   const [selected, setSelected] = useState<
     ReturnType<typeof eventBuckets>[number] | null
   >(null);
   const visible = useVisibleItems();
   const footer = useRef<HTMLElement>(null);
+  useEffect(() => {
+    const mobile = window.matchMedia("(max-width: 750px)");
+    const resize = () => {
+      setWindowMs(mobile.matches ? 60_000 : TIMELINE_MS);
+      setSelected(null);
+    };
+    resize();
+    mobile.addEventListener("change", resize);
+    return () => mobile.removeEventListener("change", resize);
+  }, []);
   useEffect(() => {
     if (!selected) return;
     const outside = (event: PointerEvent) => {
@@ -181,7 +192,11 @@ function Timeline({
     );
     return () => clearInterval(tick);
   }, [paused, Boolean(selected)]);
-  const buckets = useMemo(() => eventBuckets(applied, now), [applied, now]);
+  const buckets = useMemo(
+    () => eventBuckets(applied, now, windowMs),
+    [applied, now, windowMs],
+  );
+  const seconds = windowMs / 1000;
   const count = buckets.reduce(
     (total, bucket) => total + bucket.events.length,
     0,
@@ -208,7 +223,10 @@ function Timeline({
       <div className="timeline-heading">
         <span>
           <strong>Realtime</strong>
-          <span className="timeline-count"> · {count} events / 2 min</span>
+          <span className="timeline-count">
+            {" "}
+            · {count} events / {windowMs === TIMELINE_MS ? "2 min" : "60s"}
+          </span>
         </span>
         <span className="timeline-legend">
           <span className="legend-dot on-screen" />
@@ -229,18 +247,20 @@ function Timeline({
       </div>
       <div
         className="timeline-track"
-        aria-label="Events from two minutes ago to now"
+        aria-label={`Events from ${windowMs === TIMELINE_MS ? "two minutes" : "60 seconds"} ago to now`}
       >
         <div className="timeline-axis" />
-        {[120, 90, 60, 30, 0].map((seconds) => (
-          <span
-            className="timeline-tick"
-            key={seconds}
-            style={{ left: `${(1 - seconds / 120) * 100}%` }}
-          >
-            {seconds === 0 ? "now" : `−${seconds}s`}
-          </span>
-        ))}
+        {[seconds, seconds * 0.75, seconds * 0.5, seconds * 0.25, 0].map(
+          (tick) => (
+            <span
+              className="timeline-tick"
+              key={tick}
+              style={{ left: `${(1 - tick / seconds) * 100}%` }}
+            >
+              {tick === 0 ? "now" : `−${tick}s`}
+            </span>
+          ),
+        )}
         {!count && (
           <span className="timeline-empty">
             {status === "error"
@@ -258,7 +278,7 @@ function Timeline({
               type="button"
               className={`timeline-bucket ${selected?.time === bucket.time ? "active" : ""}`}
               style={{
-                left: `${Math.max(0, Math.min(100, 100 * (1 - (now - bucket.time) / TIMELINE_MS)))}%`,
+                left: `${Math.max(0, Math.min(100, 100 * (1 - (now - bucket.time) / windowMs)))}%`,
               }}
               aria-label={`${bucket.events.length} ${bucket.events.length === 1 ? "event" : "events"}, ${onscreen} in view`}
               aria-expanded={selected?.time === bucket.time}

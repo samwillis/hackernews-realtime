@@ -8,7 +8,8 @@ threads in the demo. Replies, submissions, voting and profiles link to the real
 Hacker News site. The orange header contains a square RT mark, top/new/submit
 navigation and right-aligned live controls. Changed scores and counts pulse
 individually; inserted rows expand and reordered rows animate. A fixed bottom
-timeline shows all mirrored events from the last two minutes, including changes
+timeline shows all mirrored events from the last 60 seconds on mobile or two
+minutes on desktop, including changes
 to stories and comments outside the current view.
 
 Demo: [hackernews-realtime.vercel.app](https://hackernews-realtime.vercel.app/).
@@ -114,7 +115,8 @@ viewer load testing remains outstanding.
 
 ## Event timeline
 
-The footer is a two-minute timeline: new events appear at the right and drift
+The footer shows the last 60 seconds on screens up to 750px wide and two minutes
+on larger screens: new events appear at the right and drift
 left. Orange marks relate to items inside the unobscured viewport; grey marks
 relate to items elsewhere. Scrolling and collapsing replies update these colours.
 The before/after viewport union stays orange during the 320ms row transition,
@@ -130,7 +132,8 @@ Postgres triggers journal story, feed and comment writes inside the same fenced
 transaction. A separate sealed Realtime query streams all journal rows, independent
 of the current feed, page or discussion. Unchanged fields and timestamp-only
 writes emit no event. The journal retains 15 minutes and is pruned during ingestion;
-the UI displays the most recent two minutes. “All events” means all changes mirrored
+the UI displays the most recent 60 seconds on mobile or two minutes on desktop.
+“All events” means all changes mirrored
 by this demo's bounded feeds and watched discussions. Comment body details are
 short text excerpts. Apply migration 0003 with `npm run db:setup`; the existing
 native ingester picks it up without redeployment.

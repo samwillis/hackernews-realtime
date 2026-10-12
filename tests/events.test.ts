@@ -35,6 +35,21 @@ test("timeline keeps every event in busy bursts, independent of item or kind", (
   assert.equal(buckets[1].events.length, 1500);
   assert.equal(buckets[0].events[0].event_id, 1501);
   assert.equal(eventBuckets(events, now + TIMELINE_MS).length, 0);
+  const boundaryEvents = [
+    event(1, now - 60_001),
+    event(2, now - 60_000),
+    event(3, now - 1),
+  ];
+  assert.deepEqual(
+    eventBuckets(boundaryEvents, now, 60_000).flatMap((bucket) =>
+      bucket.events.map((row) => row.event_id),
+    ),
+    [2, 3],
+  );
+  assert.equal(
+    eventBuckets(boundaryEvents, now).flatMap((bucket) => bucket.events).length,
+    3,
+  );
 });
 test("visibility uses the unobscured viewport and includes partially visible rows", () => {
   assert.equal(
