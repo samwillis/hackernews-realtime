@@ -1,6 +1,7 @@
 "use client";
 import { useEffect, useState } from "react";
 import { LiveLink as Link } from "./live-link";
+import { NeonCredit } from "./neon-credit";
 import { useConnection, useSession, useSettings } from "./live-session";
 import { HN } from "@/lib/links";
 import type { Feed, SourceHealth } from "@/lib/types";
@@ -37,6 +38,7 @@ export function Header({
           <span> | </span>
           <a href={`${HN}/submit`}>submit</a>
         </nav>
+        <NeonCredit />
       </div>
       <LiveControls
         controls={controls}

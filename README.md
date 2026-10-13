@@ -6,7 +6,8 @@ by Neon Realtime. Top and new feeds mirror the first 150 source items and show
 resume applies the latest ordered snapshot. Story comment links open live nested
 threads in the demo. Replies, submissions, voting and profiles link to the real
 Hacker News site. The orange header contains a square RT mark, top/new/submit
-navigation and right-aligned live controls. Changed scores and counts pulse
+navigation, a linked Neon mark with “Built with Neon Realtime”, and right-aligned
+live controls. Changed scores and counts pulse
 individually; inserted rows expand and reordered rows animate. A fixed bottom
 timeline shows all mirrored events from the last 60 seconds on mobile or two
 minutes on desktop, including changes

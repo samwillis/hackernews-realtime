@@ -57,10 +57,31 @@ input:focus-visible {
   align-items: baseline;
   flex-wrap: wrap;
   column-gap: 8px;
+  flex: 1;
+  min-width: 0;
 }
 .site-title {
   font-weight: bold;
   white-space: nowrap;
+}
+.neon-credit {
+  display: inline-flex;
+  align-items: center;
+  flex-shrink: 0;
+  gap: 5px;
+  margin-left: auto;
+  padding: 2px 5px;
+  border: 1px solid #c4e8d6;
+  border-radius: 3px;
+  background: #eafff3;
+  color: #124b35;
+  font-size: 7pt;
+  line-height: 14px;
+  white-space: nowrap;
+}
+.neon-credit svg {
+  width: 14px;
+  height: 14px;
 }
 nav .selected {
   color: #fff;
@@ -204,12 +225,16 @@ nav .selected {
     padding: 3px;
   }
   .header-content {
-    display: block;
+    display: flex;
     flex: 1;
     line-height: 15px;
   }
   nav {
     font-size: 9pt;
+  }
+  .header-content nav {
+    flex-basis: 100%;
+    order: 1;
   }
   .live-controls {
     width: 100%;

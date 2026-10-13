@@ -327,3 +327,18 @@ the viewport override was reset after verification.
 
 Production: https://hackernews-realtime-1ogz260ho-samwillis-projects.vercel.app
 Mobile screenshot: `docs/mobile-timeline-60s.png`.
+
+## Neon Realtime header attribution — 2026-10-13
+
+The shared feed/discussion header and error fallback now show the official Neon
+mark with “Built with Neon Realtime”, linking to https://neon.com. The badge sits
+before the live controls on desktop and beside the title on mobile.
+
+Typecheck, all 24 unit checks, the production build, and the public-asset secret
+scan passed (26 files, zero matches). Local checks at 390px and 320px showed the
+whole badge with no horizontal overflow. The deployed desktop header was
+verified at 993px with a live feed connection and no horizontal overflow.
+
+Production: https://hackernews-realtime-qji0n3ucj-samwillis-projects.vercel.app
+Stable URL: https://hackernews-realtime.vercel.app/
+Screenshot: [Neon header attribution](neon-credit.png).

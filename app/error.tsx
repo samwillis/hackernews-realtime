@@ -1,4 +1,5 @@
 "use client";
+import { NeonCredit } from "./neon-credit";
 export default function Error({ reset }: { reset: () => void }) {
   return (
     <main className="hn-page">
@@ -9,6 +10,7 @@ export default function Error({ reset }: { reset: () => void }) {
         <a href="/" className="site-title">
           Hacker Realtime
         </a>
+        <NeonCredit />
       </header>
       <p className="empty">
         The live page is temporarily unavailable.{" "}
