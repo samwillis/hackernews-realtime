@@ -342,3 +342,18 @@ verified at 993px with a live feed connection and no horizontal overflow.
 Production: https://hackernews-realtime-qji0n3ucj-samwillis-projects.vercel.app
 Stable URL: https://hackernews-realtime.vercel.app/
 Screenshot: [Neon header attribution](neon-credit.png).
+
+## Simplified header — 2026-10-13
+
+Replaced the Neon badge with a plain text link and reduced connection status to
+7pt. Removed pause and highlight controls; updates and change highlights remain
+enabled. Mobile navigation and status share the second header row.
+
+Typecheck, all 24 unit checks and the production build passed. The 26 built
+public assets passed the credential scan. The deployed 993px desktop and 320px
+mobile views had no horizontal overflow or pause/highlight inputs. The connected
+mobile header measured 38px tall; connecting text can wrap to another line.
+Local checks also covered 390px.
+
+Production: https://hackernews-realtime-ji9jjalhp-samwillis-projects.vercel.app
+Screenshot: [Simplified header](simpler-header.png).

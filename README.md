@@ -2,12 +2,12 @@
 
 Hacker News with live stories, scores, comment counts and source ranking, powered
 by Neon Realtime. Top and new feeds mirror the first 150 source items and show
-30 rows per page. Pause freezes story data while the subscription stays open;
-resume applies the latest ordered snapshot. Story comment links open live nested
+30 rows per page. Live updates and change highlights are always enabled.
+Story comment links open live nested
 threads in the demo. Replies, submissions, voting and profiles link to the real
 Hacker News site. The orange header contains a square RT mark, top/new/submit
-navigation, a linked Neon mark with “Built with Neon Realtime”, and right-aligned
-live controls. Changed scores and counts pulse
+navigation, a plain “Built with Neon Realtime” link, and compact connection
+status. Changed scores and counts pulse
 individually; inserted rows expand and reordered rows animate. A fixed bottom
 timeline shows all mirrored events from the last 60 seconds on mobile or two
 minutes on desktop, including changes
@@ -38,7 +38,7 @@ configured staging credentials in its ignored `.env.local`; keep that file.
 The shared staging ingester runs independently of the local web server.
 For UI work without a database, use `HN_FIXTURE=1 npm run dev`. Fixture mode is
 explicit and disabled in production. Open `/dev/updates` in fixture mode for
-button-driven story/comment updates, arrivals, moves and pause/resume checks.
+button-driven story/comment updates, arrivals and moves.
 
 ## Ingestion
 

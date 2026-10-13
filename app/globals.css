@@ -65,39 +65,26 @@ input:focus-visible {
   white-space: nowrap;
 }
 .neon-credit {
-  display: inline-flex;
-  align-items: center;
   flex-shrink: 0;
-  gap: 5px;
   margin-left: auto;
-  padding: 2px 5px;
-  border: 1px solid #c4e8d6;
-  border-radius: 3px;
-  background: #eafff3;
-  color: #124b35;
   font-size: 7pt;
   line-height: 14px;
   white-space: nowrap;
 }
-.neon-credit svg {
-  width: 14px;
-  height: 14px;
-}
 nav .selected {
   color: #fff;
 }
-.live-controls {
-  margin-left: auto;
-  padding: 2px 4px;
+.live-status {
   color: #1f1f1f;
-  font-size: 8pt;
+  font-size: 7pt;
+  line-height: 14px;
   display: flex;
   align-items: center;
   flex-wrap: wrap;
   justify-content: flex-end;
   gap: 3px;
 }
-.live-controls button {
+.live-status button {
   background: none;
   border: none;
   padding: 0;
@@ -108,20 +95,8 @@ nav .selected {
   align-items: center;
   gap: 4px;
 }
-.live-controls button:hover {
+.live-status button:hover {
   text-decoration: underline;
-}
-.live-controls label {
-  cursor: pointer;
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-}
-.live-controls input {
-  accent-color: #444;
-  margin: 0;
-  width: 11px;
-  height: 11px;
 }
 .live-dot {
   width: 5px;
@@ -131,9 +106,6 @@ nav .selected {
 }
 .live-dot.on {
   background: #3c8b42;
-}
-.live-dot.paused {
-  background: #ba8530;
 }
 .source-stale {
   color: #612500;
@@ -225,23 +197,34 @@ nav .selected {
     padding: 3px;
   }
   .header-content {
-    display: flex;
-    flex: 1;
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    align-items: center;
+    row-gap: 2px;
     line-height: 15px;
+  }
+  .hn-header .logo {
+    align-self: flex-start;
+  }
+  .header-content .site-title {
+    grid-column: 1;
+    grid-row: 1;
+  }
+  .header-content .neon-credit {
+    grid-column: 2;
+    grid-row: 1;
   }
   nav {
     font-size: 9pt;
   }
   .header-content nav {
-    flex-basis: 100%;
-    order: 1;
+    grid-column: 1;
+    grid-row: 2;
   }
-  .live-controls {
-    width: 100%;
-    margin-left: 27px;
-    padding: 3px 0;
-    justify-content: flex-start;
-    font-size: 7pt;
+  .header-content .live-status {
+    grid-column: 2;
+    grid-row: 2;
+    max-width: 170px;
   }
   .rank {
     min-width: 25px;

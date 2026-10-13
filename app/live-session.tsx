@@ -140,9 +140,7 @@ class Session {
 const SessionContext = createContext<Session | null>(null);
 type Settings = {
   paused: boolean;
-  setPaused: (value: boolean) => void;
   highlight: boolean;
-  setHighlight: (value: boolean) => void;
   now: number;
   health: SourceHealth | null;
 };
@@ -155,8 +153,6 @@ export function LiveProvider({
   fixture?: boolean;
 }) {
   const [session] = useState(() => new Session(fixture));
-  const [paused, setPaused] = useState(false);
-  const [highlight, setHighlight] = useState(true);
   const [now, setNow] = useState(0);
   const [health, setHealth] = useState<SourceHealth | null>(null);
   useEffect(() => {
@@ -190,15 +186,15 @@ export function LiveProvider({
     };
   }, [session, fixture]);
   const settings = useMemo(
-    () => ({ paused, setPaused, highlight, setHighlight, now, health }),
-    [paused, highlight, now, health],
+    () => ({ paused: false, highlight: true, now, health }),
+    [now, health],
   );
   return (
     <SessionContext.Provider value={session}>
       <SettingsContext.Provider value={settings}>
         <RealtimeProvider client={session.getClient()}>
           <div id="route-content">{children}</div>
-          {!fixture && <EventTimeline paused={paused} />}
+          {!fixture && <EventTimeline paused={false} />}
         </RealtimeProvider>
       </SettingsContext.Provider>
     </SessionContext.Provider>

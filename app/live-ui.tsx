@@ -39,12 +39,12 @@ export function Header({
           <a href={`${HN}/submit`}>submit</a>
         </nav>
         <NeonCredit />
+        <LiveStatus
+          controls={controls}
+          connection={sharedConnection}
+          error={error}
+        />
       </div>
-      <LiveControls
-        controls={controls}
-        connection={sharedConnection}
-        error={error}
-      />
     </header>
   );
 }
@@ -129,7 +129,7 @@ export function useLiveControls(
   };
 }
 export type Controls = ReturnType<typeof useLiveControls>;
-export function LiveControls({
+export function LiveStatus({
   controls,
   connection,
   error,
@@ -138,53 +138,27 @@ export function LiveControls({
   connection: string;
   error?: string;
 }) {
-  const {
-    paused,
-    setPaused,
-    highlight,
-    setHighlight,
-    now,
-    sourceHealth: health,
-  } = controls;
+  const { now, sourceHealth: health } = controls;
   const fresh =
     health?.checkedAt &&
     now - Date.parse(health.checkedAt) < 30000 &&
     health.state === "healthy";
   return (
-    <div className="live-controls">
-      <button
-        type="button"
-        onClick={() => setPaused(!paused)}
-        aria-pressed={paused}
-        aria-label={paused ? "Resume live updates" : "Pause live updates"}
-      >
-        <span
-          className={`live-dot ${paused ? "paused" : connection === "live" ? "on" : ""}`}
-        />
-        {paused ? "resume" : "pause"}
-      </button>
-      <span className="separator"> | </span>
-      <label>
-        <input
-          type="checkbox"
-          checked={highlight}
-          onChange={(event) => setHighlight(event.target.checked)}
-        />{" "}
-        highlight changes
-      </label>
-      <span className="separator"> | </span>
+    <div className="live-status">
+      <span
+        aria-hidden="true"
+        className={`live-dot ${connection === "live" ? "on" : ""}`}
+      />
       <span role="status" title={error}>
         {connection === "fixture"
           ? "development fixture"
-          : paused
-            ? "paused"
-            : connection === "live"
-              ? "live"
-              : connection === "error"
-                ? "connection lost"
-                : connection === "stale"
-                  ? "reconnecting…"
-                  : "connecting…"}
+          : connection === "live"
+            ? "live"
+            : connection === "error"
+              ? "connection lost"
+              : connection === "stale"
+                ? "reconnecting…"
+                : "connecting…"}
       </span>
       {connection === "error" && (
         <button onClick={() => window.location.reload()}>reconnect</button>
