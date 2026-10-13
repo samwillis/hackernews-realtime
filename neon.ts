@@ -22,6 +22,7 @@ export default defineConfig({
           process.env.INGEST_REQUEST_BUDGET_MS ?? "240000",
         INGEST_TENURE_MS: process.env.INGEST_TENURE_MS ?? "120000",
         INGEST_OVERLAP_MS: process.env.INGEST_OVERLAP_MS ?? "90000",
+        INGEST_SMOOTHING_MS: process.env.INGEST_SMOOTHING_MS ?? "28000",
       },
     },
   },

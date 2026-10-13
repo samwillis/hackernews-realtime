@@ -3,12 +3,13 @@ import { setTimeout as delay } from "node:timers/promises";
 import type { Pool } from "pg";
 import { HnSource } from "./source";
 import { Leases, LostLease } from "./lease";
-import { publish } from "./store";
+import { SmoothingPublisher } from "./smoothing";
 import { watchedThreads } from "./thread-watch";
 export interface SessionOptions {
   budgetMs?: number;
   tenureMs?: number;
   overlapMs?: number;
+  smoothingMs?: number;
   owner?: string;
   signal?: AbortSignal;
 }
@@ -17,6 +18,9 @@ export async function runSession(pool: Pool, options: SessionOptions = {}) {
   const budgetMs = options.budgetMs ?? 240000;
   const tenureMs = options.tenureMs ?? 120000;
   const overlapMs = options.overlapMs ?? 90000;
+  const smoothingMs = options.smoothingMs ?? 28000;
+  if (!Number.isInteger(smoothingMs) || smoothingMs < 0 || smoothingMs > 60000)
+    throw new Error("Invalid ingestion smoothing window (0–60000 ms)");
   if (
     ![budgetMs, tenureMs, overlapMs].every(Number.isFinite) ||
     budgetMs < 60000 ||
@@ -34,6 +38,7 @@ export async function runSession(pool: Pool, options: SessionOptions = {}) {
     : controller.signal;
   const deadline = arrived + budgetMs;
   const leases = new Leases(pool, owner, deadline, tenureMs, overlapMs);
+  const publisher = new SmoothingPublisher(pool, leases, smoothingMs);
   const acquired = await leases.acquire();
   if (acquired.role === "skip") return { role: "skip", owner };
   let role = acquired.role;
@@ -66,6 +71,7 @@ export async function runSession(pool: Pool, options: SessionOptions = {}) {
     fencing = promoted.fencing;
     end = promoted.end;
     publishedRevision = -1;
+    publisher.reset();
     await event("promoted", {
       deadline: new Date(deadline).toISOString(),
       end: new Date(end).toISOString(),
@@ -152,7 +158,13 @@ export async function runSession(pool: Pool, options: SessionOptions = {}) {
     }
   };
   try {
-    await event("started", { role, budgetMs, tenureMs, overlapMs });
+    await event("started", {
+      role,
+      budgetMs,
+      tenureMs,
+      overlapMs,
+      smoothingMs,
+    });
     await source.reconcile();
     await refreshWatches();
     await renew();
@@ -188,11 +200,12 @@ export async function runSession(pool: Pool, options: SessionOptions = {}) {
           await promote();
         }
       } else {
-        if (source.ready && source.snapshot.revision !== publishedRevision) {
-          const snapshot = source.copy();
-          await publish(pool, leases, fencing, snapshot);
-          publishedRevision = snapshot.revision;
-        }
+        const snapshot =
+          source.ready && source.snapshot.revision !== publishedRevision
+            ? source.copy()
+            : undefined;
+        await publisher.tick(fencing, snapshot);
+        if (snapshot) publishedRevision = snapshot.revision;
         if (Date.now() >= end) {
           const next = await leases.handoff(fencing);
           if (next) {

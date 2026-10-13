@@ -61,6 +61,24 @@ Source health is independent of the browser's Realtime connection.
 If a scheduled successor arrives late, the active worker keeps publishing while
 waiting, bounded by its original request deadline.
 
+HN's public Firebase export releases changes in roughly 32-second bursts. The
+ingester now spreads story updates and individual comment edits across a
+configurable window, defaulting to **28 seconds**. Set
+`INGEST_SMOOTHING_MS=0` in `.env.local` and run `npm run ingest:deploy` to restore
+immediate publication; local `npm run ingest` reads the same setting. Values
+from 0 to 60000 are accepted. Running workers adopt deployment changes at the
+next scheduled handoff.
+
+This deliberately adds up to the configured delay after receiving an HN change.
+Independent operations in each received batch receive evenly spaced deadlines.
+Feed reorders and comment-tree structure changes remain atomic, so a large rank
+shift can still share one timeline marker. New branches and initial discussion
+loads fill immediately. Pending updates are stored in Postgres and survive
+handoffs/restarts. Overlapping changes to the same row use the newest value at
+the original deadline; a change that reverts before publication is cancelled.
+Turning smoothing off drains outstanding work immediately when the new worker
+becomes active. Timeline timestamps continue to describe actual mirror writes.
+
 The staged configuration uses a **two-minute active tenure**, a **90-second
 preparation window**, and a **four-minute absolute invocation budget**. The
 budget includes standby time and is never reset on promotion. Scheduled
@@ -135,8 +153,8 @@ writes emit no event. The journal retains 15 minutes and is pruned during ingest
 the UI displays the most recent 60 seconds on mobile or two minutes on desktop.
 “All events” means all changes mirrored
 by this demo's bounded feeds and watched discussions. Comment body details are
-short text excerpts. Apply migration 0003 with `npm run db:setup`; the existing
-native ingester picks it up without redeployment.
+short text excerpts. Run `npm run db:setup` to apply all migrations before
+deploying an updated ingester.
 
 ## Navigation and server rendering
 

@@ -202,6 +202,59 @@ before committing the route, reusing those handles and their authoritative rows.
 - All 26 public production assets passed the credential/sealing-secret scan.
   The proof image is [navigation.png](navigation.png).
 
+## Update cadence and ingestion smoothing — 2026-10-13
+
+Two concurrent source captures (135 seconds and 95 seconds) observed HN's
+`topstories` and `updates` Firebase streams changing every 31.8–33.7 seconds.
+The three monitored item streams changed alongside those bursts. REST reads
+every two seconds, with caching disabled, saw the same changes after the stream;
+neither REST nor the changed-items endpoint exposed a faster source in these
+captures. The official API describes its export as “near real time”.
+
+Before smoothing, 57 ingestion commits over 15 minutes had receipt-to-write
+diagnostics of median 174ms, p95 282ms and maximum 298ms. A probe using the
+browser's capability-renewal lifecycle received 210 journal events with
+database-to-SDK timings of median 185ms, p95 209ms and maximum 405ms. Renewal
+succeeded at 49.7 seconds and delivery continued afterward with no errors.
+These use receipt/row timestamps and separate clocks rather than exact COMMIT
+acknowledgments and paint markers. The roughly 32-second cadence is upstream.
+
+`INGEST_SMOOTHING_MS` now defaults to 28000. Independent story updates and
+comment edits receive evenly spaced publication deadlines within that window.
+Each feed reorder and comment-tree structure change remains atomic. Initial
+feed/discussion baselines publish immediately. A private Postgres queue retains
+deadlines through handoffs and restarts; overlapping updates retain the newest
+value at the existing deadline. Setting the value to 0 drains the queue and
+publishes immediately when the new worker becomes active. Journal timestamps
+still correspond to actual database writes.
+
+- TypeScript and 24 unit checks passed. New coverage verifies deadline spacing,
+  dependency ordering, immediate mode and invalid configuration.
+- The four existing isolated database checks passed, plus a new isolated queue
+  check covering no-op suppression, replacement/reversion, valid feed ranks,
+  complete arrival records, fenced ownership transfer, initial thread loading,
+  independent comment edits, structural writes preserving newer content,
+  removal without resurrection, immediate-mode draining and rollback.
+- The real-HN handoff check passed with four simultaneously watched discussions;
+  handoff-to-promotion measured 110ms. These are local workers against an
+  isolated staging schema, with a deliberate delayed successor and test shutdown.
+- Migration 0005 and the updated native worker are deployed on the dedicated
+  staging branch with a 28000ms window. A 115-second live capture received 200
+  journal events in 30 deliveries, including 26 story-update deliveries with a
+  median gap of 3.5 seconds (maximum 11.3 seconds). Feed reorders still shared
+  atomic markers, including one 152-event insertion/rank shift. Database-to-SDK
+  p95 was 224ms; two capability renewals succeeded without errors. Observed
+  receipt-to-write diagnostics ranged from 3.4 to 25.6 seconds, including the
+  deliberate smoothing delay.
+- A native worker handoff occurred during the capture, with promotion after
+  205ms and no recorded source/session/watch failures. The existing browser tab
+  remained live with HN connected and individual markers distributed across
+  the footer. [Smoothed timeline screenshot](smoothing.png).
+
+Raw timing captures are retained in ignored `.local/cadence-results-2026-10-13.json`
+and `.local/cadence-renewed-results-2026-10-13.json`; the deployed smoothing
+capture is `.local/cadence-smoothed-results-2026-10-13.json`.
+
 ## Launch checks still required
 
 - Extend correlated latency measurements to inserts, removals and rank-only
