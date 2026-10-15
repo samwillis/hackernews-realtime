@@ -2,7 +2,7 @@ export function NeonCredit() {
   return (
     <a
       className="neon-credit"
-      href="https://neon.com"
+      href="https://neon.com/docs/realtime/overview"
       target="_blank"
       rel="noopener noreferrer"
     >
