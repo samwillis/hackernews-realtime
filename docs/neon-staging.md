@@ -85,6 +85,6 @@ current routes before using that fallback.
 - User-supplied setup guide: `NEON_REALTIME_SETUP.md` (2026-10-09).
 - Local examples: `neon-examples/realtime`, particularly `nextjs`.
 - SDK and CLI source: `neon-pkgs`.
-- [Realtime preview docs](https://neon-next-git-thruflo-realtime-3-integration-neondatabase.vercel.app/docs/realtime/)
+- [Neon Realtime documentation](https://neon.com/docs/realtime/overview)
 - [Function runtime limits](https://neon.com/docs/compute/functions/reference/runtime-limits)
 - [Function Triggers](https://neon.com/docs/compute/functions/triggers/overview)

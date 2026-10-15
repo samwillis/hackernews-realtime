@@ -1,41 +1,72 @@
 # Hacker Realtime
 
-Hacker News with live stories, scores, comment counts and source ranking, powered
-by Neon Realtime. Top and new feeds mirror the first 150 source items and show
-30 rows per page. Live updates and change highlights are always enabled.
-Story comment links open live nested
-threads in the demo. Replies, submissions, voting and profiles link to the real
-Hacker News site. The orange header contains a square RT mark, top/new/submit
-navigation, a plain “Built with Neon Realtime” link, and compact connection
-status. Changed scores and counts pulse
-individually; inserted rows expand and reordered rows animate. A fixed bottom
-timeline shows all mirrored events from the last 60 seconds on mobile or two
-minutes on desktop, including changes
-to stories and comments outside the current view.
+Hacker News with live stories, scores, comment counts and rankings, built with
+[Neon Realtime](https://neon.com/docs/realtime/overview) and Next.js.
 
-Demo: [hackernews-realtime.vercel.app](https://hackernews-realtime.vercel.app/).
-The demo uses Neon staging; [validation](docs/validation.md) records the current
-evidence and remaining launch checks.
+**[Live demo on Vercel](https://hackernews-realtime.vercel.app/)** ·
+**[Neon Realtime documentation](https://neon.com/docs/realtime/overview)**
+
+Top and new feeds mirror the first 150 source items and show 30 rows per page.
+Story comment links open live nested threads in the demo. Replies, submissions,
+voting and profiles link to the real Hacker News site.
+
+Changed scores and comment counts highlight individually; new rows expand into
+place and reordered rows animate. Live updates and change highlights stay
+enabled. A fixed bottom timeline shows all mirrored events from the last 60
+seconds on mobile or two minutes on desktop, including changes outside the
+current view. The header includes a plain “Built with Neon Realtime” link and
+compact connection status.
+
+The hosted demo uses Neon staging. [Validation notes](docs/validation.md) record
+the completed checks and remaining launch checks.
 
 ## Run locally
 
-Use Node **22.23.2**, npm **10.9.8**, and Git. The bootstrap uses pinned
-pnpm 10.30.3 to build Neon's unpublished SDK and CLI inside `.local/`.
+Use Node **22.23.2**, npm **10.9.8**, and Git. Bootstrap fetches the Neon source
+commit pinned in `neon-toolchain.lock.json` and uses pnpm 10.30.3 to build the SDK
+and CLI inside `.local/`. You need access to that source repository.
+
+For live data, use a Neon branch with Realtime, logical replication and the
+required browser origins enabled. See [Neon setup notes](docs/neon-staging.md)
+and the [Realtime documentation](https://neon.com/docs/realtime/overview).
 
 ```sh
 npm run bootstrap
 npm ci
 cp -n .env.example .env.local
-# Fill DATABASE_URL, DATABASE_URL_UNPOOLED, NEON_REALTIME_SECRET,
-# NEXT_PUBLIC_NEON_REALTIME_URL from your Neon Realtime branch.
+```
+
+Set `DATABASE_URL`, `DATABASE_URL_UNPOOLED`, `NEON_REALTIME_SECRET`,
+`NEON_REALTIME_URL` and `NEXT_PUBLIC_NEON_REALTIME_URL` in `.env.local` for your
+branch. Use the same `wss://` endpoint for both Realtime URL variables. Keep the
+database credentials and Realtime secret on the server. The example CLI
+configuration targets Neon staging; follow the setup notes when using it.
+
+For a new branch, apply the schema and seed the feeds once before starting an
+ingester:
+
+```sh
 npm run db:setup
 npm run seed
+```
+
+Start the web app:
+
+```sh
 npm run dev
 ```
 
-Open [localhost:3000](http://localhost:3000). The current workspace already has
-configured staging credentials in its ignored `.env.local`; keep that file.
-The shared staging ingester runs independently of the local web server.
+Open [localhost:3000](http://localhost:3000). The web server does not run
+ingestion. If your branch has no scheduled ingester, run this in a separate
+terminal to repeat local ingestion sessions:
+
+```sh
+npm run ingest -- --watch
+```
+
+If you are using a branch with an active ingester, reuse it and skip seeding and
+the local ingestion command. Preserve existing `.env.local` values.
+
 For UI work without a database, use `HN_FIXTURE=1 npm run dev`. Fixture mode is
 explicit and disabled in production. Open `/dev/updates` in fixture mode for
 button-driven story/comment updates, arrivals and moves.
@@ -62,9 +93,9 @@ Source health is independent of the browser's Realtime connection.
 If a scheduled successor arrives late, the active worker keeps publishing while
 waiting, bounded by its original request deadline.
 
-HN's public Firebase export releases changes in roughly 32-second bursts. The
-ingester now spreads story updates and individual comment edits across a
-configurable window, defaulting to **28 seconds**. Set
+HN's public Firebase export has been observed delivering changes in roughly
+32-second bursts. The ingester spreads story updates and individual comment
+edits across a configurable window, defaulting to **28 seconds**. Set
 `INGEST_SMOOTHING_MS=0` in `.env.local` and run `npm run ingest:deploy` to restore
 immediate publication; local `npm run ingest` reads the same setting. Values
 from 0 to 60000 are accepted. Running workers adopt deployment changes at the
@@ -80,13 +111,12 @@ the original deadline; a change that reverts before publication is cancelled.
 Turning smoothing off drains outstanding work immediately when the new worker
 becomes active. Timeline timestamps continue to describe actual mirror writes.
 
-The staged configuration uses a **two-minute active tenure**, a **90-second
+Scheduled ingestion defaults to a **two-minute active tenure**, a **90-second
 preparation window**, and a **four-minute absolute invocation budget**. The
-budget includes standby time and is never reset on promotion. Scheduled
-requests completed successfully after roughly three minutes. This establishes
-a working configuration without assuming the scheduler accepts the runtime's
-full fifteen-minute limit. See [validation](docs/validation.md) for evidence and
-remaining launch checks.
+budget includes standby time and is never reset on promotion. These values are
+configured by `INGEST_TENURE_MS`, `INGEST_OVERLAP_MS` and
+`INGEST_REQUEST_BUDGET_MS`. See [validation](docs/validation.md) for runtime
+evidence and remaining launch checks.
 
 Set `INGEST_PROJECT_ID` and `INGEST_BRANCH_ID` to the dedicated shared branch,
 then set `ENABLE_INGEST=1` and run:
@@ -98,8 +128,9 @@ npm run ingest:deploy
 The `neon.ts` policy always creates a disabled schedule. The deployment wrapper
 enables it only on the explicit target. Preview checkouts remain disabled.
 Public requests cannot start the deployed ingester: it accepts only verified
-native schedule deliveries. `npm run ingest` is a manual local invocation for
-development and respects the same lease. It skips if a worker owns the branch.
+native schedule deliveries. `npm run ingest` runs one local session using the
+same lease rules; it can join as standby or skip when no role is available.
+Use `npm run ingest -- --watch` to repeat sessions for local development.
 
 To stop scheduled ingestion, set `ENABLE_INGEST=0` and run `npm run ingest:deploy`.
 Existing requests finish by their recorded deadlines; browser rows then remain
@@ -118,8 +149,8 @@ while contacting HN, and a newer worker publication takes precedence.
 
 Each mounted page renews its own viewer watch every ten seconds and releases it
 on navigation or closing. The ingester discovers watches every second on its
-shared Firebase connection. Multiple viewers share one thread subscription;
-there is no three-thread gate. Abandoned watches expire after 30 seconds.
+shared Firebase connection. Multiple viewers share one thread subscription.
+Abandoned watches expire after 30 seconds.
 Prefetching seeds the cache but does not register an ongoing ingestion watch.
 
 Remaining comments appear progressively. Incomplete snapshots only insert
@@ -144,18 +175,17 @@ including arrivals, removals and rows that cross the screen while reordering.
 Hover, focus or tap a marker to inspect it. Events in the same second share a
 counted marker; its scrollable details include every event, with no type filter
 or burst cap. Inspection holds the timeline steady; Escape, the close button or
-an outside tap dismisses the details. Header pause freezes both the page and the
-timeline. Reduced motion advances the timeline in one-second steps.
+an outside tap dismisses the details. Reduced motion advances the timeline in
+one-second steps.
 
-Postgres triggers journal story, feed and comment writes inside the same fenced
-transaction. A separate sealed Realtime query streams all journal rows, independent
-of the current feed, page or discussion. Unchanged fields and timestamp-only
-writes emit no event. The journal retains 15 minutes and is pruned during ingestion;
+Postgres triggers journal story, feed and comment writes in the same database
+transaction as each change. A separate sealed Realtime query streams all journal
+rows, independent of the current feed, page or discussion. Unchanged fields and
+timestamp-only writes emit no event. The journal retains 15 minutes and is pruned during ingestion;
 the UI displays the most recent 60 seconds on mobile or two minutes on desktop.
-“All events” means all changes mirrored
-by this demo's bounded feeds and watched discussions. Comment body details are
-short text excerpts. Run `npm run db:setup` to apply all migrations before
-deploying an updated ingester.
+“All events” means all changes mirrored by this demo's bounded feeds and watched
+discussions. Comment body details are short text excerpts. Run `npm run db:setup`
+to apply all migrations before deploying an updated ingester.
 
 ## Navigation and server rendering
 
@@ -166,8 +196,8 @@ Client navigation fetches a server component payload for the destination.
 
 One Realtime client in the root layout multiplexes all page and timeline queries.
 The connection indicator follows its actual transport lifecycle, with query
-failures and reconnects still reported. Pause, highlighting, source health and
-the event timeline persist when changing pages.
+failures and reconnects still reported. Source health and the event timeline
+persist when changing pages; live updates and highlighting remain enabled.
 
 Internal links prefetch the Next route and prepare its live subscriptions on
 hover/focus or click. Navigation waits for their first authoritative live snapshot;
@@ -210,6 +240,6 @@ before dependency installation.
 ## References
 
 - [HN API](https://github.com/HackerNews/API)
-- [Realtime preview documentation](https://neon-next-git-thruflo-realtime-3-integration-neondatabase.vercel.app/docs/realtime/)
+- [Neon Realtime documentation](https://neon.com/docs/realtime/overview)
 - [Staging setup](docs/neon-staging.md)
 - [Design and acceptance targets](PLAN.md)
