@@ -17,8 +17,8 @@ seconds on mobile or two minutes on desktop, including changes outside the
 current view. The header includes a plain “Built with Neon Realtime” link and
 compact connection status.
 
-The hosted demo uses Neon staging. [Validation notes](docs/validation.md) record
-the completed checks and remaining launch checks.
+[Validation notes](docs/validation.md) record the completed checks and remaining
+launch checks.
 
 ## Run locally
 
