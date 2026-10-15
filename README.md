@@ -1,245 +1,176 @@
 # Hacker Realtime
 
-Hacker News with live stories, scores, comment counts and rankings, built with
-[Neon Realtime](https://neon.com/docs/realtime/overview) and Next.js.
+A familiar Hacker News interface where stories, scores, rankings and comment
+threads update live. New stories expand into the list, stories animate as their
+rank changes, and updated scores and comment counts light up individually. A
+moving timeline lets you inspect changes across the demo, including items
+outside your current view.
 
-**[Live demo on Vercel](https://hackernews-realtime.vercel.app/)** ·
-**[Neon Realtime documentation](https://neon.com/docs/realtime/overview)**
+The demo is built with **Neon Realtime**, which lets applications subscribe to
+live Postgres query results. When the underlying data changes, Neon Realtime
+sends updates to the browser so the interface stays in sync automatically.
 
-Top and new feeds mirror the first 150 source items and show 30 rows per page.
-Story comment links open live nested threads in the demo. Replies, submissions,
-voting and profiles link to the real Hacker News site.
+**[Try the live demo](https://hackernews-realtime.vercel.app/)** ·
+**[Explore Neon](https://neon.com)** ·
+**[Neon Realtime docs](https://neon.com/docs/realtime/overview)**
 
-Changed scores and comment counts highlight individually; new rows expand into
-place and reordered rows animate. Live updates and change highlights stay
-enabled. A fixed bottom timeline shows all mirrored events from the last 60
-seconds on mobile or two minutes on desktop, including changes outside the
-current view. The header includes a plain “Built with Neon Realtime” link and
-compact connection status.
+Browse the top and new feeds, or open a story's comment count to follow its
+nested discussion live. Voting, replying, submitting and viewing profiles link
+to the original Hacker News site.
 
-[Validation notes](docs/validation.md) record the completed checks and remaining
-launch checks.
+## Built with Neon
+
+| Service | How this demo uses it |
+| --- | --- |
+| **Neon Realtime** | Streams live query results for story lists, story metadata, comment threads and the event timeline to the browser. |
+| **Neon Postgres** | Stores the Hacker News mirror, feed rankings, comments, event history and pending ingestion updates. |
+| **Neon Functions** | Runs the ingester, maintaining connections to the Hacker News API and writing changes into Postgres. |
+| **Neon Function Triggers** | Invokes ingestion every minute. Overlapping workers use database leases to hand off ingestion while keeping one active writer. |
+
+Next.js and React provide the interface, Drizzle defines the database queries,
+and Vercel hosts the web app. The source data comes from the
+[official Hacker News API](https://github.com/HackerNews/API).
+
+## How it works
+
+```mermaid
+flowchart LR
+  HN[Hacker News API] --> Ingest[Neon Function]
+  Schedule[Neon Function Trigger] --> Ingest
+  Ingest --> DB[Neon Postgres]
+  DB --> RT[Neon Realtime]
+  RT --> Browser[React interface]
+  DB --> Next[Next.js server rendering]
+  Next --> Browser
+```
+
+### Ingesting Hacker News
+
+The ingester subscribes to Hacker News's Firebase feeds and item updates, with
+periodic REST reconciliation to refresh the mirror. It tracks the first 150
+items in each of the top and new feeds. Comment threads are watched while
+people have them open, with multiple viewers sharing the same upstream
+subscription.
+
+Feed membership and complete story records are written together. A Postgres
+lease and fencing token ensure that only the active ingestion worker can
+publish, while a standby worker prepares to take over. Pending changes are
+stored in Postgres so they survive worker handoffs.
+
+Hacker News can deliver changes in bursts. The ingester spreads updates over a
+configurable window, defaulting to 28 seconds, to give the demo a steadier flow
+of activity. This adds up to 28 seconds of delay after receiving a change.
+Initial loads happen immediately, and feed reorders and comment-tree changes
+stay atomic. Set `INGEST_SMOOTHING_MS=0` to publish updates immediately.
+
+The ingestion implementation is in [ingest/](ingest/). The Neon Function and its
+schedule are defined in [neon.ts](neon.ts), with the Function entry point in
+[functions/ingest.ts](functions/ingest.ts).
+
+### From SQL queries to a live interface
+
+Next.js renders the initial stories and comments on the server. The server
+also seals each query, producing a capability that lets the browser subscribe
+to that specific query through Neon Realtime. Database credentials and the
+Realtime sealing secret stay on the server.
+
+The queries in [lib/queries.ts](lib/queries.ts) use Drizzle and Neon's Drizzle
+adapter. One Realtime client in the root layout shares a connection across the
+feed, discussion and timeline subscriptions. Internal navigation prepares the
+destination's live queries before switching pages, and the connection stays
+open as you move around.
+
+Feeds show 30 stories per page. Discussions load a small initial batch of
+comments, then fill in the remaining replies progressively, up to 500 comments
+per story. Replies can be collapsed, and each thread links to the full original
+discussion on Hacker News.
+
+### Animations and the event timeline
+
+React compares incoming rows by stable item ID to distinguish changed numbers,
+arrivals, removals and rank changes. Number changes highlight only the affected
+value; arriving rows expand and reordered rows animate to their new positions.
+
+Postgres triggers record story, feed and comment changes in an event journal,
+inside the same transaction as each change. A separate Realtime query powers
+the footer timeline across all mirrored feeds and watched discussions.
+
+The timeline shows two minutes on desktop and 60 seconds on mobile. Orange
+markers relate to items on screen; grey markers relate to items elsewhere.
+Items entering or leaving the viewport stay orange during their transition.
+Hover, focus or tap a marker to inspect its details. The interface also respects
+reduced-motion preferences.
 
 ## Run locally
 
-Use Node **22.23.2**, npm **10.9.8**, and Git. Bootstrap fetches the Neon source
-commit pinned in `neon-toolchain.lock.json` and uses pnpm 10.30.3 to build the SDK
-and CLI inside `.local/`. You need access to that source repository.
+### Prerequisites
 
-For live data, use a Neon branch with Realtime, logical replication and the
-required browser origins enabled. See [Neon setup notes](docs/neon-staging.md)
-and the [Realtime documentation](https://neon.com/docs/realtime/overview).
+- Node.js **22.23.2**, npm **10.9.8** and Git.
+- Access to the Neon source repository used by `npm run bootstrap`, pinned in
+  [neon-toolchain.lock.json](neon-toolchain.lock.json).
+- A Neon Postgres branch with logical replication and Realtime enabled. Allow
+  `http://localhost:3000` as a browser origin in its Realtime configuration.
+  See the [Neon Realtime docs](https://neon.com/docs/realtime/overview) for setup.
+
+### 1. Install
 
 ```sh
+git clone https://github.com/samwillis/hackernews-realtime.git
+cd hackernews-realtime
 npm run bootstrap
 npm ci
 cp -n .env.example .env.local
 ```
 
-Set `DATABASE_URL`, `DATABASE_URL_UNPOOLED`, `NEON_REALTIME_SECRET`,
-`NEON_REALTIME_URL` and `NEXT_PUBLIC_NEON_REALTIME_URL` in `.env.local` for your
-branch. Use the same `wss://` endpoint for both Realtime URL variables. Keep the
-database credentials and Realtime secret on the server. The example CLI
-configuration targets Neon staging; follow the setup notes when using it.
+Bootstrap builds the pinned Neon SDK and CLI with pnpm 10.30.3 and creates the
+local packages required by `npm ci`.
 
-For a new branch, apply the schema and seed the feeds once before starting an
-ingester:
+### 2. Configure your branch
+
+Fill in these values in `.env.local` using your branch's connection details:
+
+| Variable | Value |
+| --- | --- |
+| `DATABASE_URL` | Pooled Postgres connection URL for application and ingestion queries. |
+| `DATABASE_URL_UNPOOLED` | Direct Postgres connection URL for schema setup. |
+| `NEON_REALTIME_SECRET` | Server-side secret used to seal live queries. |
+| `NEON_REALTIME_URL` | Your branch's Realtime WebSocket endpoint, starting with `wss://`. |
+| `NEXT_PUBLIC_NEON_REALTIME_URL` | The same WebSocket endpoint, exposed to the browser. |
+
+Keep `.env.local` out of version control. Only the WebSocket endpoint belongs in
+a browser-visible environment variable.
+
+### 3. Create the schema and load the feeds
+
+For a new branch, run:
 
 ```sh
 npm run db:setup
 npm run seed
 ```
 
-Start the web app:
+This applies the migrations in [migrations/](migrations/) and loads real Hacker
+News stories. If your branch already has an active ingester, skip seeding and
+reuse that ingester.
+
+### 4. Start the app and ingestion
+
+Start Next.js:
 
 ```sh
 npm run dev
 ```
 
-Open [localhost:3000](http://localhost:3000). The web server does not run
-ingestion. If your branch has no scheduled ingester, run this in a separate
-terminal to repeat local ingestion sessions:
+In a separate terminal, start local ingestion:
 
 ```sh
 npm run ingest -- --watch
 ```
 
-If you are using a branch with an active ingester, reuse it and skip seeding and
-the local ingestion command. Preserve existing `.env.local` values.
+Open **[localhost:3000](http://localhost:3000)**. The ingestion command repeats
+sessions while the web app serves pages and subscribes to database changes. If
+your branch already has a scheduled ingester, you only need the web app.
 
-For UI work without a database, use `HN_FIXTURE=1 npm run dev`. Fixture mode is
-explicit and disabled in production. Open `/dev/updates` in fixture mode for
-button-driven story/comment updates, arrivals and moves.
-
-## Ingestion
-
-```mermaid
-flowchart LR
-  HN[HN Firebase subscriptions] --> Function[Neon Function]
-  Schedule[One-minute trigger] --> Function
-  Function --> PG[Neon Postgres]
-  PG --> RT[Neon Realtime]
-  RT --> Browser[HN interface]
-  PG --> Next[Next.js SSR and query sealing]
-  Next --> Browser
-```
-
-One active writer and one prepared standby share a Postgres lease with a fencing
-token. Each transaction checks ownership and expiry under a row lock. Feed
-membership is published atomically with complete item records, and unchanged
-rows are not rewritten. Firebase multiplexes the bounded item listeners;
-authoritative REST reconciliation runs every minute and after reconnects.
-Source health is independent of the browser's Realtime connection.
-If a scheduled successor arrives late, the active worker keeps publishing while
-waiting, bounded by its original request deadline.
-
-HN's public Firebase export has been observed delivering changes in roughly
-32-second bursts. The ingester spreads story updates and individual comment
-edits across a configurable window, defaulting to **28 seconds**. Set
-`INGEST_SMOOTHING_MS=0` in `.env.local` and run `npm run ingest:deploy` to restore
-immediate publication; local `npm run ingest` reads the same setting. Values
-from 0 to 60000 are accepted. Running workers adopt deployment changes at the
-next scheduled handoff.
-
-This deliberately adds up to the configured delay after receiving an HN change.
-Independent operations in each received batch receive evenly spaced deadlines.
-Feed reorders and comment-tree structure changes remain atomic, so a large rank
-shift can still share one timeline marker. New branches and initial discussion
-loads fill immediately. Pending updates are stored in Postgres and survive
-handoffs/restarts. Overlapping changes to the same row use the newest value at
-the original deadline; a change that reverts before publication is cancelled.
-Turning smoothing off drains outstanding work immediately when the new worker
-becomes active. Timeline timestamps continue to describe actual mirror writes.
-
-Scheduled ingestion defaults to a **two-minute active tenure**, a **90-second
-preparation window**, and a **four-minute absolute invocation budget**. The
-budget includes standby time and is never reset on promotion. These values are
-configured by `INGEST_TENURE_MS`, `INGEST_OVERLAP_MS` and
-`INGEST_REQUEST_BUDGET_MS`. See [validation](docs/validation.md) for runtime
-evidence and remaining launch checks.
-
-Set `INGEST_PROJECT_ID` and `INGEST_BRANCH_ID` to the dedicated shared branch,
-then set `ENABLE_INGEST=1` and run:
-
-```sh
-npm run ingest:deploy
-```
-
-The `neon.ts` policy always creates a disabled schedule. The deployment wrapper
-enables it only on the explicit target. Preview checkouts remain disabled.
-Public requests cannot start the deployed ingester: it accepts only verified
-native schedule deliveries. `npm run ingest` runs one local session using the
-same lease rules; it can join as standby or skip when no role is available.
-Use `npm run ingest -- --watch` to repeat sessions for local development.
-
-To stop scheduled ingestion, set `ENABLE_INGEST=0` and run `npm run ingest:deploy`.
-Existing requests finish by their recorded deadlines; browser rows then remain
-visible with a stale-source indicator. Do not seed a branch already owned by
-an active ingester.
-
-## Live discussions
-
-Click a story's comment count to open `/item?id=…`. Story metadata and nested
-comments use separate fixed sealed queries over the same Realtime client.
-Uncached pages fetch the story and up to 20 top-level comments directly from HN
-in the server page loader and navigation preparation endpoint. A short database
-claim shares concurrent cold loads; seeds are committed before sealing live
-queries, so SSR and the first live reset agree. No database connection is held
-while contacting HN, and a newer worker publication takes precedence.
-
-Each mounted page renews its own viewer watch every ten seconds and releases it
-on navigation or closing. The ingester discovers watches every second on its
-shared Firebase connection. Multiple viewers share one thread subscription.
-Abandoned watches expire after 30 seconds.
-Prefetching seeds the cache but does not register an ongoing ingestion watch.
-
-Remaining comments appear progressively. Incomplete snapshots only insert
-missing comments, preserving cached descendants and newer values; reconciled
-snapshots update and remove rows authoritatively. Worker writes remain in the
-same fenced transaction as feed data. Handoff readiness follows the feed, so a
-newly opened discussion cannot block the entire ingester's transfer. Text uses
-a small HTML allowlist, deleted/dead parents remain placeholders, and branches
-can be collapsed. The demo displays **up to 500 comments per story**, with a
-link to the full original discussion for larger threads. Broader concurrent
-viewer load testing remains outstanding.
-
-## Event timeline
-
-The footer shows the last 60 seconds on screens up to 750px wide and two minutes
-on larger screens: new events appear at the right and drift
-left. Orange marks relate to items inside the unobscured viewport; grey marks
-relate to items elsewhere. Scrolling and collapsing replies update these colours.
-The before/after viewport union stays orange during the 320ms row transition,
-including arrivals, removals and rows that cross the screen while reordering.
-
-Hover, focus or tap a marker to inspect it. Events in the same second share a
-counted marker; its scrollable details include every event, with no type filter
-or burst cap. Inspection holds the timeline steady; Escape, the close button or
-an outside tap dismisses the details. Reduced motion advances the timeline in
-one-second steps.
-
-Postgres triggers journal story, feed and comment writes in the same database
-transaction as each change. A separate sealed Realtime query streams all journal
-rows, independent of the current feed, page or discussion. Unchanged fields and
-timestamp-only writes emit no event. The journal retains 15 minutes and is pruned during ingestion;
-the UI displays the most recent 60 seconds on mobile or two minutes on desktop.
-“All events” means all changes mirrored by this demo's bounded feeds and watched
-discussions. Comment body details are short text excerpts. Run `npm run db:setup`
-to apply all migrations before deploying an updated ingester.
-
-## Navigation and server rendering
-
-Next App Router renders initial feed rows, story metadata and comments on the
-server. The async page components query Postgres and seal their fixed live
-queries; the resulting HTML already contains the content before JavaScript runs.
-Client navigation fetches a server component payload for the destination.
-
-One Realtime client in the root layout multiplexes all page and timeline queries.
-The connection indicator follows its actual transport lifecycle, with query
-failures and reconnects still reported. Source health and the event timeline
-persist when changing pages; live updates and highlighting remain enabled.
-
-Internal links prefetch the Next route and prepare its live subscriptions on
-hover/focus or click. Navigation waits for their first authoritative live snapshot;
-the destination consumes those same handles and rows. Speculative loading does
-not register a thread ingestion watch. Slow or failed preparation falls back to
-the server-rendered page so it can open and report connection problems. Warm
-queries support back/forward navigation and renew their short-lived capabilities
-in memory. Inactive handles expire after 60 seconds, with at most eight retained;
-active page queries are not evicted. A later click or browser back cancels an
-older pending navigation.
-
-## Checks
-
-```sh
-npm run typecheck
-npm test
-npm run test:db       # isolated schema; requires staging database credentials
-npm run test:handoff  # delayed standby with real HN in an isolated schema
-npm run test:recovery # real HN source; kills local workers in an isolated schema
-npm run test:clean    # empty SDK/source/dependencies; bootstrap, npm ci, build
-```
-
-Database/recovery probes create and remove only their uniquely named test
-schemas. `NEXT_PUBLIC_MEASURE_REALTIME=1` enables public-data timing diagnostics
-in the browser console. Keep it at `0` for routine use.
-
-## Deploy the web app
-
-Use the pinned prebuilt Vercel workflow in
-[docs/prerelease-build.md](docs/prerelease-build.md). Configure server secrets
-with `node scripts/vercel-env.mjs production`; only the WebSocket endpoint is
-public. Add the exact deployed origin to `DEMO_ORIGIN`, then apply the Neon
-policy with `npm run ingest:deploy`.
-
-The toolchain pins Neon's source commit, package hashes and Vercel CLI version.
-Builds need no external Neon checkout. `.sdk/`, `.local/`, `.vercel/` and all
-credentials are ignored. Git-driven hosting installs need this same bootstrap
-before dependency installation.
-
-## References
-
-- [HN API](https://github.com/HackerNews/API)
-- [Neon Realtime documentation](https://neon.com/docs/realtime/overview)
-- [Staging setup](docs/neon-staging.md)
-- [Design and acceptance targets](PLAN.md)
+To disable smoothing locally, set `INGEST_SMOOTHING_MS=0` in `.env.local` and
+restart the ingestion process. The default is `28000`; accepted values range
+from `0` to `60000` milliseconds.
